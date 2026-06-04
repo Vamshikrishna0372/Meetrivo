@@ -84,9 +84,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "author", content: "Meetrivo" },
       { property: "og:title", content: "Meetrivo — Meet Beyond Meetings" },
       { property: "og:description", content: "A modern, mobile-first collaboration platform." },
+      { property: "og:image", content: "/og-image.png" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Meetrivo" },
+      { name: "twitter:image", content: "/og-image.png" },
     ],
     links: [
       {
@@ -105,6 +107,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "stylesheet",
         href: appCss,
+      },
+      {
+        rel: "icon",
+        type: "image/png",
+        href: "/favicon.png",
+      },
+      {
+        rel: "apple-touch-icon",
+        href: "/apple-touch-icon.png",
       },
     ],
   }),
