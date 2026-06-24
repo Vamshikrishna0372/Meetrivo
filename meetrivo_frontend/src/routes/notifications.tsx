@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { FiCheckCircle } from "react-icons/fi";
+import { useState, useEffect } from "react";
+import { FiCheckCircle, FiBell } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Reveal } from "@/components/shared/Reveal";
-import { notifications as seed } from "@/data/mock";
+import { notifications as notifApi } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/notifications")({
   head: () => ({ meta: [{ title: "Notifications — Meetrivo" }] }),
@@ -11,18 +11,51 @@ export const Route = createFileRoute("/notifications")({
 });
 
 const priorityStyles: Record<string, string> = {
+  HIGH: "bg-destructive/15 text-destructive",
+  NORMAL: "bg-primary/15 text-primary",
+  LOW: "bg-surface text-muted-foreground",
   high: "bg-destructive/15 text-destructive",
   normal: "bg-primary/15 text-primary",
   low: "bg-surface text-muted-foreground",
 };
 
 function NotificationsPage() {
-  const [items, setItems] = useState(seed);
-  const unread = items.filter((n) => !n.read).length;
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const unread = items.filter((n: any) => !n.read).length;
 
-  const markAll = () => setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-  const toggle = (id: string) =>
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: !n.read } : n)));
+  useEffect(() => {
+    notifApi
+      .getAll()
+      .then((data) => {
+        if (data && data.length > 0) {
+          const mapped = data.map((n: any) => ({
+            id: n.id,
+            title: n.title,
+            time: n.createdAt ? new Date(n.createdAt).toLocaleString() : "",
+            read: n.read,
+            priority: n.type === "ALERT" ? "high" : n.type === "INFO" ? "low" : "normal",
+          }));
+          setItems(mapped as any);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const markAll = async () => {
+    try {
+      await notifApi.markAllRead();
+    } catch (_) {}
+    setItems((prev: any[]) => prev.map((n: any) => ({ ...n, read: true })));
+  };
+
+  const toggle = async (id: string) => {
+    try {
+      await notifApi.markRead(id);
+    } catch (_) {}
+    setItems((prev: any[]) => prev.map((n: any) => (n.id === id ? { ...n, read: true } : n)));
+  };
 
   return (
     <AppShell>

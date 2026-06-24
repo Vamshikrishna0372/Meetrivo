@@ -30,11 +30,30 @@ function RegisterPage() {
     if (Object.keys(errs).length) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Account created — welcome to Meetrivo!");
-      navigate({ to: "/dashboard" });
-    }, 900);
+    const username = values.email.split("@")[0] + "_" + Math.floor(Math.random() * 1000);
+    
+    // Import apiFetch dynamically or from path
+    import("@/lib/apiClient").then(({ apiFetch }) => {
+      apiFetch("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          username,
+          email: values.email,
+          fullName: values.name,
+          password: values.password,
+        }),
+      })
+        .then(() => {
+          toast.success("Account created — please login!");
+          navigate({ to: "/login" });
+        })
+        .catch((err) => {
+          toast.error(err.message || "Failed to create account");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    });
   };
 
   return (

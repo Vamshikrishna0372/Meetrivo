@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   FiMic,
@@ -9,11 +9,12 @@ import {
   FiVolume2,
   FiCheckCircle,
   FiSettings,
+  FiLoader,
 } from "react-icons/fi";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/shared/Logo";
 import { cn } from "@/lib/utils";
-import { currentUser } from "@/data/mock";
+import { auth, meetings as meetingsApi } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/lobby")({
   head: () => ({ meta: [{ title: "Ready to join — Meetrivo" }] }),
@@ -24,7 +25,51 @@ function Lobby() {
   const navigate = useNavigate();
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
-  const [name, setName] = useState(currentUser.name);
+  const [name, setName] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState("");
+  const [meetingCode, setMeetingCode] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code") || localStorage.getItem("current_meeting_code") || "";
+    const nameParam = params.get("name") || "";
+    setMeetingCode(code);
+
+    const user = auth.getUser();
+    if (nameParam) {
+      setName(nameParam);
+    } else if (user) {
+      setName(user.fullName || user.username || user.email || "Guest");
+    }
+  }, []);
+
+  const handleJoin = async () => {
+    if (!meetingCode) {
+      navigate({ to: "/join" });
+      return;
+    }
+    setJoining(true);
+    setError("");
+    try {
+      const result = await meetingsApi.join(meetingCode);
+      if (result?.meetingId || result?.id) {
+        localStorage.setItem("current_meeting_id", result.meetingId || result.id);
+      }
+      if (meetingCode) {
+        localStorage.setItem("current_meeting_code", meetingCode);
+      }
+    } catch (e: any) {
+      // Allow entry even if join API fails (e.g., already joined)
+      console.warn("Join API failed:", e.message);
+    } finally {
+      setJoining(false);
+    }
+    localStorage.setItem("lobby_mic", micOn ? "true" : "false");
+    localStorage.setItem("lobby_cam", camOn ? "true" : "false");
+    localStorage.setItem("lobby_name", name);
+    navigate({ to: "/room" });
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -54,7 +99,7 @@ function Lobby() {
                   className="text-center"
                 >
                   <span className="grid h-24 w-24 place-items-center rounded-full bg-gradient-primary text-3xl font-bold text-primary-foreground shadow-glow">
-                    {currentUser.initials}
+                    {name.slice(0, 2).toUpperCase() || "ME"}
                   </span>
                   <p className="mt-3 text-sm text-muted-foreground">Camera preview</p>
                 </motion.div>
@@ -115,7 +160,7 @@ function Lobby() {
                 variant="hero"
                 size="lg"
                 className="w-full"
-                onClick={() => navigate({ to: "/room" })}
+                onClick={handleJoin}
               >
                 Join now
               </Button>

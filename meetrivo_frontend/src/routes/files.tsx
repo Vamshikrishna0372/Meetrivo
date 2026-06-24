@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FiUploadCloud,
@@ -9,7 +9,8 @@ import {
   FiGrid,
   FiArchive,
   FiDownload,
-  FiX,
+  FiLoader,
+  FiTrash2,
 } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Reveal } from "@/components/shared/Reveal";
@@ -21,15 +22,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { sharedFiles, type SharedFile } from "@/data/mock";
 import { cn } from "@/lib/utils";
+import { files as filesApi, auth } from "@/lib/apiClient";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/files")({
   head: () => ({ meta: [{ title: "Files — Meetrivo" }] }),
   component: FilesPage,
 });
 
-const iconFor: Record<SharedFile["type"], typeof FiFile> = {
+type FileType = "pdf" | "image" | "doc" | "sheet" | "zip";
+
+const iconFor: Record<FileType, typeof FiFile> = {
   pdf: FiFileText,
   image: FiImage,
   doc: FiFileText,
@@ -37,45 +41,104 @@ const iconFor: Record<SharedFile["type"], typeof FiFile> = {
   zip: FiArchive,
 };
 
+type FileItem = {
+  id: string;
+  name: string;
+  type: FileType;
+  size: string;
+  owner: string;
+  time: string;
+  downloadUrl?: string;
+};
+
 type Uploading = { id: string; name: string; progress: number };
 
+function guessType(name: string): FileType {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["png", "jpg", "jpeg", "gif", "fig", "svg", "webp"].includes(ext)) return "image";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "sheet";
+  if (["zip", "rar", "7z"].includes(ext)) return "zip";
+  if (["doc", "docx", "txt"].includes(ext)) return "doc";
+  return "pdf";
+}
+
+function formatSize(bytes?: number): string {
+  if (!bytes) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function FilesPage() {
-  const [files, setFiles] = useState<SharedFile[]>(sharedFiles);
+  const [fileItems, setFileItems] = useState<FileItem[]>([]);
   const [uploads, setUploads] = useState<Uploading[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [preview, setPreview] = useState<SharedFile | null>(null);
+  const [preview, setPreview] = useState<FileItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const isAuthenticated = auth.isAuthenticated();
 
-  const simulateUpload = useCallback((name: string) => {
+  const fetchFiles = useCallback(() => {
+    if (!isAuthenticated) { setLoading(false); return; }
+    filesApi.getAll()
+      .then((data: any[]) => {
+        const mapped: FileItem[] = (data || []).map((f: any) => ({
+          id: f.id,
+          name: f.originalName || f.filename || "Unknown file",
+          type: guessType(f.originalName || f.filename || ""),
+          size: formatSize(f.fileSize || f.size),
+          owner: f.uploaderName || f.uploader || "You",
+          time: f.createdAt ? new Date(f.createdAt).toLocaleString() : "Just now",
+          downloadUrl: filesApi.getDownloadUrl(f.id),
+        }));
+        setFileItems(mapped);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [isAuthenticated]);
+
+  useEffect(() => { fetchFiles(); }, [fetchFiles]);
+
+  const uploadFile = useCallback(async (file: File) => {
     const id = `up-${Date.now()}-${Math.random()}`;
-    setUploads((u) => [...u, { id, name, progress: 0 }]);
+    setUploads((u) => [...u, { id, name: file.name, progress: 0 }]);
+
+    let prog = 0;
     const interval = setInterval(() => {
-      setUploads((u) =>
-        u.map((x) => (x.id === id ? { ...x, progress: Math.min(100, x.progress + 12) } : x)),
-      );
-    }, 220);
-    setTimeout(() => {
+      prog = Math.min(prog + 15, 85);
+      setUploads((u) => u.map((x) => (x.id === id ? { ...x, progress: prog } : x)));
+    }, 200);
+
+    try {
+      await filesApi.upload(file);
+      clearInterval(interval);
+      setUploads((u) => u.map((x) => (x.id === id ? { ...x, progress: 100 } : x)));
+      setTimeout(() => {
+        setUploads((u) => u.filter((x) => x.id !== id));
+        fetchFiles();
+      }, 800);
+      toast.success(`${file.name} uploaded successfully`);
+    } catch (err: any) {
       clearInterval(interval);
       setUploads((u) => u.filter((x) => x.id !== id));
-      setFiles((f) => [
-        {
-          id,
-          name,
-          type: guessType(name),
-          size: `${(Math.random() * 5 + 0.2).toFixed(1)} MB`,
-          owner: "You",
-          time: "Just now",
-        },
-        ...f,
-      ]);
-    }, 2200);
-  }, []);
+      toast.error(err.message || "Upload failed");
+    }
+  }, [fetchFiles]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
-    const dropped = Array.from(e.dataTransfer.files);
-    if (dropped.length) dropped.forEach((f) => simulateUpload(f.name));
-    else simulateUpload(`upload-${Date.now()}.pdf`);
+    Array.from(e.dataTransfer.files).forEach(uploadFile);
+  };
+
+  const deleteFile = async (fileId: string) => {
+    try {
+      await filesApi.delete(fileId);
+      setFileItems((f) => f.filter((x) => x.id !== fileId));
+      setPreview(null);
+      toast.success("File deleted");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete file");
+    }
   };
 
   return (
@@ -88,13 +151,9 @@ function FilesPage() {
       </Reveal>
 
       <div className="mt-6 space-y-6">
-        {/* Drop zone */}
         <Reveal>
           <label
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             className={cn(
@@ -115,14 +174,13 @@ function FilesPage() {
               multiple
               className="hidden"
               onChange={(e) => {
-                Array.from(e.target.files ?? []).forEach((f) => simulateUpload(f.name));
+                Array.from(e.target.files ?? []).forEach(uploadFile);
                 e.target.value = "";
               }}
             />
           </label>
         </Reveal>
 
-        {/* Active uploads */}
         <AnimatePresence>
           {uploads.map((u) => (
             <motion.div
@@ -146,8 +204,12 @@ function FilesPage() {
           ))}
         </AnimatePresence>
 
-        {/* Grid */}
-        {files.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <FiLoader className="h-8 w-8 animate-spin text-primary" />
+            <p className="mt-2 text-sm text-muted-foreground">Loading files...</p>
+          </div>
+        ) : fileItems.length === 0 ? (
           <EmptyState
             icon={FiFile}
             title="No files yet"
@@ -155,7 +217,7 @@ function FilesPage() {
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {files.map((f, i) => {
+            {fileItems.map((f, i) => {
               const Icon = iconFor[f.type];
               return (
                 <Reveal key={f.id} delay={i * 0.04}>
@@ -199,9 +261,28 @@ function FilesPage() {
                 <Meta label="Owner" value={preview.owner} />
                 <Meta label="Added" value={preview.time} />
               </div>
-              <Button className="w-full">
-                <FiDownload /> Download
-              </Button>
+              <div className="flex gap-2">
+                {preview.downloadUrl ? (
+                  <a
+                    href={preview.downloadUrl}
+                    download={preview.name}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 py-2.5 text-sm font-medium text-primary-foreground"
+                  >
+                    <FiDownload className="h-4 w-4" /> Download
+                  </a>
+                ) : (
+                  <Button className="flex-1" disabled>
+                    <FiDownload /> Download
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => preview && deleteFile(preview.id)}
+                >
+                  <FiTrash2 />
+                </Button>
+              </div>
             </>
           )}
         </DialogContent>
@@ -217,13 +298,4 @@ function Meta({ label, value }: { label: string; value: string }) {
       <p className="mt-0.5 font-medium">{value}</p>
     </div>
   );
-}
-
-function guessType(name: string): SharedFile["type"] {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (["png", "jpg", "jpeg", "gif", "fig", "svg", "webp"].includes(ext)) return "image";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "sheet";
-  if (["zip", "rar", "7z"].includes(ext)) return "zip";
-  if (["doc", "docx", "txt"].includes(ext)) return "doc";
-  return "pdf";
 }

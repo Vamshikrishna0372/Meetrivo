@@ -5,6 +5,8 @@ import { AuthLayout } from "@/layouts/AuthLayout";
 import { Field } from "@/components/shared/Field";
 import { Button } from "@/components/ui/button";
 
+import { apiFetch } from "@/lib/apiClient";
+
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Login — Meetrivo" }] }),
   component: LoginPage,
@@ -25,11 +27,22 @@ function LoginPage() {
     if (Object.keys(errs).length) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Welcome back to Meetrivo");
-      navigate({ to: "/dashboard" });
-    }, 900);
+    apiFetch<{ token: string; user: any }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ login: values.email, password: values.password }),
+    })
+      .then((data) => {
+        localStorage.setItem("meetrivo_token", data.token);
+        localStorage.setItem("meetrivo_user", JSON.stringify(data.user));
+        toast.success("Welcome back to Meetrivo");
+        navigate({ to: "/dashboard" });
+      })
+      .catch((err) => {
+        toast.error(err.message || "Invalid credentials");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   return (

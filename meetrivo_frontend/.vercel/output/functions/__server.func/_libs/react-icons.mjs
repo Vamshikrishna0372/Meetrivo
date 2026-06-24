@@ -131,6 +131,9 @@ function FiUsers(props) {
 function FiUser(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" }, "child": [] }, { "tag": "circle", "attr": { "cx": "12", "cy": "7", "r": "4" }, "child": [] }] })(props);
 }
+function FiUserPlus(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }, "child": [] }, { "tag": "circle", "attr": { "cx": "8.5", "cy": "7", "r": "4" }, "child": [] }, { "tag": "line", "attr": { "x1": "20", "y1": "8", "x2": "20", "y2": "14" }, "child": [] }, { "tag": "line", "attr": { "x1": "23", "y1": "11", "x2": "17", "y2": "11" }, "child": [] }] })(props);
+}
 function FiUploadCloud(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "16 16 12 12 8 16" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "12", "x2": "12", "y2": "21" }, "child": [] }, { "tag": "path", "attr": { "d": "M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" }, "child": [] }, { "tag": "polyline", "attr": { "points": "16 16 12 12 8 16" }, "child": [] }] })(props);
 }
@@ -142,6 +145,9 @@ function FiTrendingUp(props) {
 }
 function FiTrash2(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "3 6 5 6 21 6" }, "child": [] }, { "tag": "path", "attr": { "d": "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" }, "child": [] }, { "tag": "line", "attr": { "x1": "10", "y1": "11", "x2": "10", "y2": "17" }, "child": [] }, { "tag": "line", "attr": { "x1": "14", "y1": "11", "x2": "14", "y2": "17" }, "child": [] }] })(props);
+}
+function FiStar(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" }, "child": [] }] })(props);
 }
 function FiSquare(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "3", "y": "3", "width": "18", "height": "18", "rx": "2", "ry": "2" }, "child": [] }] })(props);
@@ -167,11 +173,20 @@ function FiSend(props) {
 function FiSearch(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "11", "cy": "11", "r": "8" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "y1": "21", "x2": "16.65", "y2": "16.65" }, "child": [] }] })(props);
 }
+function FiSave(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" }, "child": [] }, { "tag": "polyline", "attr": { "points": "17 21 17 13 7 13 7 21" }, "child": [] }, { "tag": "polyline", "attr": { "points": "7 3 7 8 15 8" }, "child": [] }] })(props);
+}
 function FiRotateCw(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "23 4 23 10 17 10" }, "child": [] }, { "tag": "path", "attr": { "d": "M20.49 15a9 9 0 1 1-2.12-9.36L23 10" }, "child": [] }] })(props);
 }
 function FiRotateCcw(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polyline", "attr": { "points": "1 4 1 10 7 10" }, "child": [] }, { "tag": "path", "attr": { "d": "M3.51 15a9 9 0 1 0 2.13-9.36L1 10" }, "child": [] }] })(props);
+}
+function FiPlus(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "5", "x2": "12", "y2": "19" }, "child": [] }, { "tag": "line", "attr": { "x1": "5", "y1": "12", "x2": "19", "y2": "12" }, "child": [] }] })(props);
+}
+function FiPlusCircle(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "10" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "8", "x2": "12", "y2": "16" }, "child": [] }, { "tag": "line", "attr": { "x1": "8", "y1": "12", "x2": "16", "y2": "12" }, "child": [] }] })(props);
 }
 function FiPlay(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "polygon", "attr": { "points": "5 3 19 12 5 21 5 3" }, "child": [] }] })(props);
@@ -203,6 +218,9 @@ function FiMenu(props) {
 function FiMaximize(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" }, "child": [] }] })(props);
 }
+function FiLogOut(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "16 17 21 12 16 7" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "y1": "12", "x2": "9", "y2": "12" }, "child": [] }] })(props);
+}
 function FiLogIn(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "10 17 15 12 10 7" }, "child": [] }, { "tag": "line", "attr": { "x1": "15", "y1": "12", "x2": "3", "y2": "12" }, "child": [] }] })(props);
 }
@@ -229,6 +247,9 @@ function FiImage(props) {
 }
 function FiHome(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" }, "child": [] }, { "tag": "polyline", "attr": { "points": "9 22 9 12 15 12 15 22" }, "child": [] }] })(props);
+}
+function FiHelpCircle(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "10" }, "child": [] }, { "tag": "path", "attr": { "d": "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "17", "x2": "12.01", "y2": "17" }, "child": [] }] })(props);
 }
 function FiHardDrive(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "22", "y1": "12", "x2": "2", "y2": "12" }, "child": [] }, { "tag": "path", "attr": { "d": "M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" }, "child": [] }, { "tag": "line", "attr": { "x1": "6", "y1": "16", "x2": "6.01", "y2": "16" }, "child": [] }, { "tag": "line", "attr": { "x1": "10", "y1": "16", "x2": "10.01", "y2": "16" }, "child": [] }] })(props);
@@ -262,6 +283,18 @@ function FiEdit2(props) {
 }
 function FiDownload(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "7 10 12 15 17 10" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "y1": "15", "x2": "12", "y2": "3" }, "child": [] }] })(props);
+}
+function FiDollarSign(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "line", "attr": { "x1": "12", "y1": "1", "x2": "12", "y2": "23" }, "child": [] }, { "tag": "path", "attr": { "d": "M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" }, "child": [] }] })(props);
+}
+function FiDatabase(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "ellipse", "attr": { "cx": "12", "cy": "5", "rx": "9", "ry": "3" }, "child": [] }, { "tag": "path", "attr": { "d": "M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" }, "child": [] }, { "tag": "path", "attr": { "d": "M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" }, "child": [] }] })(props);
+}
+function FiCreditCard(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "1", "y": "4", "width": "22", "height": "16", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "line", "attr": { "x1": "1", "y1": "10", "x2": "23", "y2": "10" }, "child": [] }] })(props);
+}
+function FiCpu(props) {
+  return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "4", "y": "4", "width": "16", "height": "16", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "rect", "attr": { "x": "9", "y": "9", "width": "6", "height": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "9", "y1": "1", "x2": "9", "y2": "4" }, "child": [] }, { "tag": "line", "attr": { "x1": "15", "y1": "1", "x2": "15", "y2": "4" }, "child": [] }, { "tag": "line", "attr": { "x1": "9", "y1": "20", "x2": "9", "y2": "23" }, "child": [] }, { "tag": "line", "attr": { "x1": "15", "y1": "20", "x2": "15", "y2": "23" }, "child": [] }, { "tag": "line", "attr": { "x1": "20", "y1": "9", "x2": "23", "y2": "9" }, "child": [] }, { "tag": "line", "attr": { "x1": "20", "y1": "14", "x2": "23", "y2": "14" }, "child": [] }, { "tag": "line", "attr": { "x1": "1", "y1": "9", "x2": "4", "y2": "9" }, "child": [] }, { "tag": "line", "attr": { "x1": "1", "y1": "14", "x2": "4", "y2": "14" }, "child": [] }] })(props);
 }
 function FiCopy(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "rect", "attr": { "x": "9", "y": "9", "width": "13", "height": "13", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "path", "attr": { "d": "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" }, "child": [] }] })(props);
@@ -309,70 +342,81 @@ function TbHandStop(props) {
   return GenIcon({ "attr": { "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, "child": [{ "tag": "path", "attr": { "d": "M8 13v-7.5a1.5 1.5 0 0 1 3 0v6.5" }, "child": [] }, { "tag": "path", "attr": { "d": "M11 5.5v-2a1.5 1.5 0 1 1 3 0v8.5" }, "child": [] }, { "tag": "path", "attr": { "d": "M14 5.5a1.5 1.5 0 0 1 3 0v6.5" }, "child": [] }, { "tag": "path", "attr": { "d": "M17 7.5a1.5 1.5 0 0 1 3 0v8.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47" }, "child": [] }] })(props);
 }
 export {
-  FiActivity as $,
-  FiSend as A,
+  FiImage as $,
+  FiFile as A,
   BsEraser as B,
-  FiWifi as C,
-  FiLayers as D,
-  FiCheckCircle as E,
+  FiCpu as C,
+  FiGrid as D,
+  FiInfo as E,
   FiEdit2 as F,
-  FiVolume2 as G,
-  FiSettings as H,
-  FiAlertCircle as I,
-  FiLoader as J,
-  FiArrowRight as K,
-  FiMaximize as L,
-  FiUser as M,
-  FiChevronLeft as N,
-  FiSearch as O,
-  FiInbox as P,
-  FiUploadCloud as Q,
-  FiArchive as R,
-  FiGrid as S,
+  FiPhoneOff as G,
+  FiCopy as H,
+  FiWifi as I,
+  FiLayers as J,
+  FiPlus as K,
+  FiPlusCircle as L,
+  FiUserPlus as M,
+  FiCheckCircle as N,
+  FiVolume2 as O,
+  FiSettings as P,
+  FiAlertCircle as Q,
+  FiArrowRight as R,
+  FiMaximize as S,
   TbHandStop as T,
-  FiFileText as U,
-  FiImage as V,
-  FiDownload as W,
-  FiLogIn as X,
-  FiHardDrive as Y,
-  FiTrendingUp as Z,
-  FiCalendar as _,
+  FiUser as U,
+  FiChevronLeft as V,
+  FiSearch as W,
+  FiInbox as X,
+  FiUploadCloud as Y,
+  FiArchive as Z,
+  FiFileText as _,
   FiMinus as a,
-  FiEyeOff as a0,
-  FiEye as a1,
-  FiHome as a2,
-  FiEdit3 as a3,
-  FiFolder as a4,
-  FiPlay as a5,
-  FiMenu as a6,
-  FiTwitter as a7,
-  FiGithub as a8,
-  FiLinkedin as a9,
-  FiCode as aa,
-  FiSmartphone as ab,
+  FiDownload as a0,
+  FiStar as a1,
+  FiLogIn as a2,
+  FiHardDrive as a3,
+  FiTrendingUp as a4,
+  FiCalendar as a5,
+  FiActivity as a6,
+  FiEyeOff as a7,
+  FiEye as a8,
+  FiCreditCard as a9,
+  FiDatabase as aa,
+  FiDollarSign as ab,
+  FiHome as ac,
+  FiEdit3 as ad,
+  FiFolder as ae,
+  FiLogOut as af,
+  FiPlay as ag,
+  FiMenu as ah,
+  FiTwitter as ai,
+  FiGithub as aj,
+  FiLinkedin as ak,
+  FiCode as al,
+  FiSmartphone as am,
   FiSquare as b,
   FiCircle as c,
   FiRotateCcw as d,
   FiRotateCw as e,
-  FiTrash2 as f,
-  FiMoon as g,
-  FiBell as h,
-  FiMic as i,
-  FiShield as j,
-  FiLock as k,
-  FiShare2 as l,
-  FiClock as m,
-  FiMonitor as n,
-  FiX as o,
-  FiMicOff as p,
-  FiVideo as q,
-  FiVideoOff as r,
-  FiSmile as s,
-  FiUsers as t,
-  FiMessageSquare as u,
-  FiFile as v,
-  FiInfo as w,
-  FiPhoneOff as x,
-  FiCheck as y,
-  FiCopy as z
+  FiSave as f,
+  FiTrash2 as g,
+  FiLoader as h,
+  FiCheck as i,
+  FiX as j,
+  FiHelpCircle as k,
+  FiSend as l,
+  FiMoon as m,
+  FiBell as n,
+  FiMic as o,
+  FiShield as p,
+  FiLock as q,
+  FiShare2 as r,
+  FiClock as s,
+  FiMonitor as t,
+  FiMicOff as u,
+  FiVideo as v,
+  FiVideoOff as w,
+  FiSmile as x,
+  FiUsers as y,
+  FiMessageSquare as z
 };

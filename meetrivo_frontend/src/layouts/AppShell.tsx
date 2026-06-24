@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { useState, useEffect, type ReactNode } from "react";
+import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
   FiHome,
@@ -10,38 +10,77 @@ import {
   FiVideo,
   FiEdit3,
   FiFolder,
+  FiLogOut,
+  FiLayers,
+  FiCreditCard,
+  FiHelpCircle,
+  FiMessageSquare,
+  FiShield,
 } from "react-icons/fi";
 import { Logo } from "@/components/shared/Logo";
-import { currentUser } from "@/data/mock";
+import { auth } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-const nav = [
-  { label: "Dashboard", to: "/dashboard", icon: FiHome },
-  { label: "Whiteboard", to: "/whiteboard", icon: FiEdit3 },
-  { label: "Files", to: "/files", icon: FiFolder },
-  { label: "History", to: "/history", icon: FiClock },
-  { label: "Alerts", to: "/notifications", icon: FiBell },
-  { label: "Profile", to: "/profile", icon: FiUser },
-  { label: "Settings", to: "/settings", icon: FiSettings },
-];
-
-const mobileNav = [
-  { label: "Home", to: "/dashboard", icon: FiHome },
-  { label: "Files", to: "/files", icon: FiFolder },
-  { label: "Board", to: "/whiteboard", icon: FiEdit3 },
-  { label: "Alerts", to: "/notifications", icon: FiBell },
-  { label: "Profile", to: "/profile", icon: FiUser },
-];
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+  const [initials, setInitials] = useState("ME");
+  const [displayName, setDisplayName] = useState("User");
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    // Auth guard: redirect to login if not authenticated
+    if (typeof window !== "undefined" && !auth.isAuthenticated()) {
+      window.location.href = "/login";
+      return;
+    }
+    const stored = localStorage.getItem("meetrivo_user");
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        const name = u.fullName || u.username || u.email || "User";
+        setDisplayName(name);
+        setIsAdmin(u.role === "ADMIN" || u.role === "SUPER_ADMIN");
+        const parts = name.split(" ");
+        setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().substring(0, 2));
+      } catch (e) {}
+    }
+  }, []);
+
+  const handleLogout = () => {
+    auth.logout();
+    navigate({ to: "/login" });
+  };
+
+  const nav = [
+    { label: "Dashboard", to: "/dashboard", icon: FiHome },
+    { label: "Workspaces", to: "/organizations", icon: FiLayers },
+    { label: "Whiteboard", to: "/whiteboard", icon: FiEdit3 },
+    { label: "Files", to: "/files", icon: FiFolder },
+    { label: "History", to: "/history", icon: FiClock },
+    { label: "Billing", to: "/billing", icon: FiCreditCard },
+    { label: "Support", to: "/support", icon: FiHelpCircle },
+    { label: "Feedback", to: "/feedback", icon: FiMessageSquare },
+    { label: "Alerts", to: "/notifications", icon: FiBell },
+    { label: "Profile", to: "/profile", icon: FiUser },
+    { label: "Settings", to: "/settings", icon: FiSettings },
+    ...(isAdmin ? [{ label: "Admin Panel", to: "/admin", icon: FiShield }] : []),
+  ];
+
+  const mobileNav = [
+    { label: "Home", to: "/dashboard", icon: FiHome },
+    { label: "Files", to: "/files", icon: FiFolder },
+    { label: "Board", to: "/whiteboard", icon: FiEdit3 },
+    { label: "Billing", to: "/billing", icon: FiCreditCard },
+    { label: "Profile", to: "/profile", icon: FiUser },
+  ];
 
   return (
     <div className="min-h-screen w-full bg-background md:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar p-5 md:flex">
-        <Logo className="mb-8" />
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-sidebar p-5 md:flex overflow-y-auto">
+        <Logo className="mb-6" />
         <nav className="flex flex-1 flex-col gap-1">
           {nav.map((item) => {
             const active = pathname === item.to;
@@ -50,13 +89,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={item.to}
                 to={item.to}
                 className={cn(
-                  "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                   active
                     ? "bg-surface text-foreground"
                     : "text-muted-foreground hover:bg-surface/60 hover:text-foreground",
                 )}
               >
-                <item.icon className="h-4.5 w-4.5" />
+                <item.icon className="h-4 w-4" />
                 {item.label}
                 {active && (
                   <motion.span
@@ -68,12 +107,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+        <div className="mt-4 space-y-2 rounded-2xl border border-border bg-card p-4">
           <Button variant="hero" className="w-full" asChild>
             <Link to="/create">
               <FiVideo /> New meeting
             </Link>
           </Button>
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/50 bg-background/50 px-3 py-2">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-primary text-xs font-semibold text-primary-foreground">
+              {initials}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">{displayName}</span>
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              aria-label="Log out"
+              className="shrink-0 text-muted-foreground transition-colors hover:text-destructive cursor-pointer"
+            >
+              <FiLogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -82,7 +135,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md md:hidden">
           <Logo />
           <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-primary text-sm font-semibold text-primary-foreground">
-            {currentUser.initials}
+            {initials}
           </span>
         </header>
 
@@ -105,7 +158,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   active ? "text-primary" : "text-muted-foreground",
                 )}
               >
-                <item.icon className="h-5 w-5" />
+                <item.icon className="h-4.5 w-4.5" />
                 {item.label}
               </Link>
             );

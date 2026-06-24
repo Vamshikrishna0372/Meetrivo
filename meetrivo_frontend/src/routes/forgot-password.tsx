@@ -25,10 +25,22 @@ function ForgotPage() {
     }
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setSent(true);
-    }, 900);
+    
+    import("@/lib/apiClient").then(({ apiFetch }) => {
+      apiFetch("/api/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      })
+        .then(() => {
+          setSent(true);
+        })
+        .catch((err) => {
+          setError(err.message || "Failed to send reset link");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    });
   };
 
   return (

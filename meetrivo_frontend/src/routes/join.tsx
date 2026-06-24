@@ -16,25 +16,32 @@ import { AppShell } from "@/layouts/AppShell";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/shared/Field";
 import { cn } from "@/lib/utils";
-import { currentUser, knownRooms } from "@/data/mock";
+import { meetings as meetingsApi, auth } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/join")({
   head: () => ({ meta: [{ title: "Join meeting — Meetrivo" }] }),
   component: JoinMeeting,
 });
 
-type Room = (typeof knownRooms)[string];
+type Room = {
+  title: string;
+  host: string;
+  privacy: "Open" | "Locked" | "Passcode";
+  type: string;
+  status: "live" | "starting" | "scheduled";
+  participants: { initials: string }[];
+};
 type Phase = "form" | "verifying" | "preview";
 
 function JoinMeeting() {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>("form");
   const [roomId, setRoomId] = useState("");
-  const [name, setName] = useState(currentUser.name);
+  const [name, setName] = useState(() => auth.getUser()?.fullName || auth.getUser()?.username || "");
   const [error, setError] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
 
-  const verify = () => {
+  const verify = async () => {
     const id = roomId.trim().toUpperCase();
     if (!id) {
       setError("Enter a meeting ID to continue.");
@@ -46,16 +53,29 @@ function JoinMeeting() {
     }
     setError("");
     setPhase("verifying");
-    setTimeout(() => {
-      const found = knownRooms[id];
-      if (!found) {
+    try {
+      const results = await meetingsApi.searchByCode(id);
+      if (!results || results.length === 0) {
         setPhase("form");
-        setError("We couldn't find that room. Try MTR-481-902 or MTR-204-115.");
+        setError("We couldn't find that room. Make sure the code is correct.");
         return;
       }
-      setRoom(found);
+      const found = results[0];
+      setRoom({
+        title: found.title,
+        host: found.hostName || "Host",
+        privacy: found.passwordProtected ? "Passcode" : found.waitingRoomEnabled ? "Locked" : "Open",
+        type: found.visibility || "Public",
+        status: found.status === "ACTIVE" ? "live" : found.status === "SCHEDULED" ? "scheduled" : "starting",
+        participants: (found.participantCount || 0) > 0
+          ? Array.from({ length: Math.min(found.participantCount, 6) }, (_, i) => ({ initials: `P${i + 1}` }))
+          : [],
+      });
       setPhase("preview");
-    }, 1100);
+    } catch (e: any) {
+      setPhase("form");
+      setError(e.message || "An error occurred while verifying the room.");
+    }
   };
 
   return (
@@ -176,7 +196,11 @@ function JoinMeeting() {
                 <Button variant="ghost" onClick={() => setPhase("form")}>
                   <FiChevronLeft /> Back
                 </Button>
-                <Button variant="hero" onClick={() => navigate({ to: "/lobby" })}>
+                <Button variant="hero" onClick={() => {
+                  localStorage.setItem("current_meeting_code", roomId);
+                  localStorage.setItem("join_display_name", name);
+                  window.location.href = `/lobby?code=${roomId}&name=${encodeURIComponent(name)}`;
+                }}>
                   Join workspace <FiArrowRight />
                 </Button>
               </div>

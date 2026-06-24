@@ -200,3 +200,15 @@
     background-image: var(--gradient-surface);
   }
 }
+
+/* Enforce pointer cursor on all interactive elements */
+button,
+a,
+select,
+input[type="checkbox"],
+input[type="radio"],
+.cursor-pointer,
+.card-interactive,
+[role="button"] {
+  cursor: pointer !important;
+}

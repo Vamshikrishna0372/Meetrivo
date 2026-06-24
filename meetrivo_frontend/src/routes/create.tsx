@@ -10,13 +10,15 @@ import {
   FiShield,
   FiUser,
   FiVideo,
+  FiLoader,
 } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/shared/Field";
 import { QrCode } from "@/components/shared/QrCode";
 import { cn } from "@/lib/utils";
-import { currentUser, meetingTypes, privacyLevels } from "@/data/mock";
+import { meetingTypes, privacyLevels } from "@/data/mock";
+import { meetings as meetingsApi, auth } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/create")({
   head: () => ({ meta: [{ title: "Create meeting — Meetrivo" }] }),
@@ -49,8 +51,44 @@ function CreateMeeting() {
     passcode: "",
   });
   const [touched, setTouched] = useState(false);
-  const roomId = useMemo(() => genId(), []);
-  const link = `https://meetrivo.com/j/${roomId}`;
+  const [loading, setLoading] = useState(false);
+  const [createdMeeting, setCreatedMeeting] = useState<any>(null);
+
+  const [generatedRoomId, setGeneratedRoomId] = useState(() => genId());
+  const roomId = createdMeeting?.meetingCode || generatedRoomId;
+  const link = typeof window !== 'undefined'
+    ? `${window.location.origin}/lobby?code=${roomId}`
+    : `https://meetrivo.com/j/${roomId}`;
+
+  const handleCreate = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        title: form.title,
+        description: form.description,
+        scheduled: false,
+        passwordProtected: form.privacy === "passcode",
+        meetingPassword: form.privacy === "passcode" ? form.passcode : undefined,
+        visibility: form.privacy === "open" ? "PUBLIC" : "PRIVATE",
+        maxParticipants: 100,
+        waitingRoomEnabled: form.privacy === "locked",
+        recordingEnabled: true,
+        chatEnabled: true,
+        screenShareEnabled: true,
+      };
+      const res = await meetingsApi.create(payload);
+      setCreatedMeeting(res);
+      if (res?.meetingCode) {
+        localStorage.setItem("current_meeting_code", res.meetingCode);
+        localStorage.setItem("current_meeting_id", res.id);
+      }
+      setStep(2);
+    } catch (e: any) {
+      alert(e.message || "Failed to create meeting");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const errors = {
     title:
@@ -182,7 +220,7 @@ function CreateMeeting() {
               <div className="grid gap-4 rounded-2xl border border-border bg-card p-5 sm:grid-cols-[1fr_auto] sm:p-6">
                 <div className="space-y-4">
                   <ReviewRow label="Title" value={form.title} />
-                  <ReviewRow label="Host" value={currentUser.name} icon={FiUser} />
+                  <ReviewRow label="Host" value={auth.getUser()?.fullName || auth.getUser()?.username || "Host"} icon={FiUser} />
                   <ReviewRow
                     label="Room type"
                     value={meetingTypes.find((t) => t.id === form.type)?.label ?? ""}
@@ -209,11 +247,12 @@ function CreateMeeting() {
               </div>
 
               <div className="flex justify-between gap-3">
-                <Button variant="ghost" onClick={() => setStep(0)}>
+                <Button variant="ghost" onClick={() => setStep(0)} disabled={loading}>
                   <FiChevronLeft /> Edit
                 </Button>
-                <Button variant="hero" onClick={() => setStep(2)}>
-                  Create workspace
+                <Button variant="hero" onClick={handleCreate} disabled={loading}>
+                  {loading && <FiLoader className="animate-spin mr-1" />}
+                  {loading ? "Creating..." : "Create workspace"}
                 </Button>
               </div>
             </Pane>
@@ -259,7 +298,10 @@ function CreateMeeting() {
                   <Button
                     variant="hero"
                     className="flex-1"
-                    onClick={() => navigate({ to: "/lobby" })}
+                    onClick={() => {
+                      localStorage.setItem("current_meeting_code", roomId);
+                      window.location.href = `/lobby?code=${roomId}`;
+                    }}
                   >
                     Join workspace
                   </Button>

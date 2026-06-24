@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MEETRIVO — Structured Logging Configuration (logback-spring)
+         ═══════════════════════════════════════════════════════════ -->
+
+    <springProperty scope="context" name="APP_NAME"  source="spring.application.name" defaultValue="meetrivo-backend"/>
+    <springProperty scope="context" name="LOG_LEVEL" source="logging.level.com.meetrivo"  defaultValue="INFO"/>
+
+    <!-- ─── Properties ──────────────────────────────────────────── -->
+    <property name="LOG_DIR"     value="./logs"/>
+    <property name="LOG_FILE"    value="${LOG_DIR}/meetrivo"/>
+    <property name="MAX_SIZE"    value="50MB"/>
+    <property name="MAX_HISTORY" value="30"/>
+    <property name="TOTAL_SIZE"  value="2GB"/>
+
+    <!-- ─── Console Pattern ─────────────────────────────────────── -->
+    <property name="CONSOLE_PATTERN"
+              value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"/>
+
+    <!-- ─── JSON Pattern (production) ───────────────────────────── -->
+    <property name="JSON_PATTERN"
+              value="{&quot;time&quot;:&quot;%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}&quot;,&quot;level&quot;:&quot;%p&quot;,&quot;app&quot;:&quot;${APP_NAME}&quot;,&quot;thread&quot;:&quot;%t&quot;,&quot;logger&quot;:&quot;%logger{36}&quot;,&quot;message&quot;:&quot;%replace(%m){'\&quot;','\\\\&quot;'}&quot;,&quot;exception&quot;:&quot;%replace(%ex{short}){'\n',' '}&quot;}%n"/>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         APPENDERS
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Console Appender (human-readable) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Application Log (rolling file — all levels) -->
+    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${MAX_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE}</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Error Log (rolling file — ERROR only) -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/meetrivo-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/meetrivo-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${MAX_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Security Log (rolling file — security events) -->
+    <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/meetrivo-security.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/meetrivo-security.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>${MAX_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- JSON Structured Log (production — for log aggregators like ELK / Datadog) -->
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/meetrivo-structured.json</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/meetrivo-structured.%d{yyyy-MM-dd}.%i.json.gz</fileNamePattern>
+            <maxFileSize>${MAX_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE}</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${JSON_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- Async wrapper to prevent I/O blocking in the request thread -->
+    <appender name="ASYNC_APP" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="APP_FILE"/>
+    </appender>
+
+    <appender name="ASYNC_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>256</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <appender-ref ref="ERROR_FILE"/>
+    </appender>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         PROFILE-SPECIFIC CONFIG
+         ═══════════════════════════════════════════════════════════ -->
+
+    <!-- Development profile: verbose console only -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="ASYNC_ERROR"/>
+        </root>
+        <logger name="com.meetrivo" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+        <logger name="org.springframework.web" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+        <logger name="org.springframework.security" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+    </springProfile>
+
+    <!-- Production profile: structured JSON + async rolling files -->
+    <springProfile name="prod">
+        <root level="WARN">
+            <appender-ref ref="ASYNC_APP"/>
+            <appender-ref ref="ASYNC_ERROR"/>
+            <appender-ref ref="JSON_FILE"/>
+        </root>
+        <logger name="com.meetrivo" level="INFO" additivity="false">
+            <appender-ref ref="ASYNC_APP"/>
+            <appender-ref ref="ASYNC_ERROR"/>
+            <appender-ref ref="JSON_FILE"/>
+        </logger>
+        <logger name="com.meetrivo.security" level="INFO" additivity="false">
+            <appender-ref ref="SECURITY_FILE"/>
+            <appender-ref ref="ASYNC_APP"/>
+        </logger>
+        <logger name="org.springframework.security" level="WARN" additivity="false">
+            <appender-ref ref="SECURITY_FILE"/>
+        </logger>
+        <logger name="org.springframework.data.mongodb" level="WARN" additivity="false">
+            <appender-ref ref="ASYNC_APP"/>
+        </logger>
+    </springProfile>
+
+</configuration>

@@ -9,10 +9,13 @@ import {
   FiRotateCw,
   FiTrash2,
   FiMinus,
+  FiSave,
 } from "react-icons/fi";
 import { BsEraser } from "react-icons/bs";
 import { AppShell } from "@/layouts/AppShell";
 import { cn } from "@/lib/utils";
+import { whiteboard as whiteboardApi, auth } from "@/lib/apiClient";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/whiteboard")({
   head: () => ({ meta: [{ title: "Whiteboard — Meetrivo" }] }),
@@ -38,6 +41,10 @@ function WhiteboardPage() {
   const [redoStack, setRedoStack] = useState<Stroke[]>([]);
   const drawing = useRef(false);
   const current = useRef<Stroke | null>(null);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const meetingId = typeof window !== "undefined"
+    ? (localStorage.getItem("current_meeting_code") || "personal")
+    : "personal";
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -66,9 +73,19 @@ function WhiteboardPage() {
     return () => window.removeEventListener("resize", resize);
   }, [redraw]);
 
+  useEffect(() => { redraw(); }, [redraw]);
+
+  // Load saved whiteboard data
   useEffect(() => {
-    redraw();
-  }, [redraw]);
+    if (!auth.isAuthenticated()) return;
+    whiteboardApi.get(meetingId)
+      .then((data: any) => {
+        if (data?.strokes && Array.isArray(data.strokes)) {
+          setStrokes(data.strokes);
+        }
+      })
+      .catch(() => {});
+  }, [meetingId]);
 
   const pos = (e: React.PointerEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -100,8 +117,18 @@ function WhiteboardPage() {
 
   const end = () => {
     if (current.current) {
-      setStrokes((s) => [...s, current.current!]);
+      const newStrokes = [...strokes, current.current];
+      setStrokes(newStrokes);
       current.current = null;
+
+      // Debounced auto-save
+      if (auth.isAuthenticated()) {
+        if (saveTimeout.current) clearTimeout(saveTimeout.current);
+        saveTimeout.current = setTimeout(() => {
+          whiteboardApi.save(meetingId, { strokes: newStrokes })
+            .catch(() => {});
+        }, 1500);
+      }
     }
     drawing.current = false;
   };
@@ -125,6 +152,22 @@ function WhiteboardPage() {
   const clear = () => {
     setStrokes([]);
     setRedoStack([]);
+    if (auth.isAuthenticated()) {
+      whiteboardApi.save(meetingId, { strokes: [] }).catch(() => {});
+    }
+  };
+
+  const saveNow = async () => {
+    if (!auth.isAuthenticated()) {
+      toast.error("Please log in to save");
+      return;
+    }
+    try {
+      await whiteboardApi.save(meetingId, { strokes });
+      toast.success("Whiteboard saved!");
+    } catch {
+      toast.error("Failed to save whiteboard");
+    }
   };
 
   const tools: { id: Tool; icon: typeof FiEdit2; label: string }[] = [
@@ -133,6 +176,13 @@ function WhiteboardPage() {
     { id: "line", icon: FiMinus, label: "Line" },
     { id: "rect", icon: FiSquare, label: "Rectangle" },
     { id: "circle", icon: FiCircle, label: "Circle" },
+  ];
+
+  const actions: { icon: typeof FiEdit2; label: string; onClick: () => void; danger?: boolean }[] = [
+    { icon: FiRotateCcw, label: "Undo", onClick: undo },
+    { icon: FiRotateCw, label: "Redo", onClick: redo },
+    { icon: FiSave, label: "Save", onClick: saveNow },
+    { icon: FiTrash2, label: "Clear", onClick: clear, danger: true },
   ];
 
   return (
@@ -194,15 +244,11 @@ function WhiteboardPage() {
             aria-label="Brush size"
           />
           <span className="mx-1 h-7 w-px bg-border" />
-          <ToolBtn label="Undo" onClick={undo}>
-            <FiRotateCcw />
-          </ToolBtn>
-          <ToolBtn label="Redo" onClick={redo}>
-            <FiRotateCw />
-          </ToolBtn>
-          <ToolBtn label="Clear" onClick={clear} danger>
-            <FiTrash2 />
-          </ToolBtn>
+          {actions.map((a) => (
+            <ToolBtn key={a.label} label={a.label} onClick={a.onClick} danger={a.danger}>
+              <a.icon />
+            </ToolBtn>
+          ))}
         </motion.div>
       </div>
     </AppShell>

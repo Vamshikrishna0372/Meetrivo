@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: meetrivo-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: meetrivo-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  backend:
+    build: .
+    container_name: meetrivo-backend
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - MONGODB_URI=mongodb://mongodb:27017/meetrivo
+      - REDIS_HOST=redis
+      - JWT_SECRET=404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      - STORAGE_PATH=/app/recordings
+    volumes:
+      - recordings:/app/recordings
+
+volumes:
+  mongo-data:
+  redis-data:
+  recordings:

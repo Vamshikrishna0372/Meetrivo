@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FiMoon, FiBell, FiMic, FiShield } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Reveal } from "@/components/shared/Reveal";
+import { users } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings — Meetrivo" }] }),
@@ -32,7 +33,40 @@ function SettingsPage() {
     presence: true,
     readReceipts: false,
   });
-  const toggle = (k: keyof typeof prefs) => setPrefs((p) => ({ ...p, [k]: !p[k] }));
+
+  useEffect(() => {
+    users.getProfile()
+      .then((res) => {
+        if (res && res.preferences) {
+          setPrefs({
+            dark: res.preferences.theme === "dark",
+            notifs: res.preferences.pushNotifications ?? true,
+            sound: res.preferences.emailNotifications ?? true,
+            hd: false,
+            presence: true,
+            readReceipts: false,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggle = async (k: keyof typeof prefs) => {
+    const nextPrefs = { ...prefs, [k]: !prefs[k] };
+    setPrefs(nextPrefs);
+
+    try {
+      await users.updateProfile({
+        preferences: {
+          theme: nextPrefs.dark ? "dark" : "light",
+          pushNotifications: nextPrefs.notifs,
+          emailNotifications: nextPrefs.sound,
+        }
+      });
+    } catch (e) {
+      console.error("Failed to update preferences", e);
+    }
+  };
 
   const sections = [
     {

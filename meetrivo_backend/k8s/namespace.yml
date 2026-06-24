@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: meetrivo
+  labels:
+    app.kubernetes.io/name: meetrivo
+    environment: production

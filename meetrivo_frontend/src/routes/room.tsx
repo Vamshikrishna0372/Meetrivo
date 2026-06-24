@@ -21,16 +21,14 @@ import {
   FiWifi,
   FiLock,
   FiClock,
+  FiLoader,
+  FiCpu,
+  FiGrid,
 } from "react-icons/fi";
 import { TbHandStop } from "react-icons/tb";
 import {
-  participants as seedParticipants,
-  chatMessages as seedChat,
-  autoReplies,
-  sharedFiles,
   reactionEmojis,
   type Participant,
-  type ChatMessage,
 } from "@/data/mock";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,19 +39,29 @@ import {
 } from "@/components/ui/dialog";
 import { QrCode } from "@/components/shared/QrCode";
 import { cn } from "@/lib/utils";
+import { useWebSocket, type WsMessage, type WsParticipant } from "@/hooks/useWebSocket";
+import { meetings as meetingsApi, files as filesApi, ai as aiApi, breakoutRooms as breakoutRoomsApi, recordings as recordingsApi } from "@/lib/apiClient";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/room")({
   head: () => ({ meta: [{ title: "Meeting room — Meetrivo" }] }),
   component: RoomPage,
 });
 
-type DrawerKind = "chat" | "participants" | "files" | "info" | null;
-
-const ROOM_CODE = "MTR-481-902";
-const ROOM_LINK = "https://meetrivo.com/j/MTR-481-902";
+type DrawerKind = "chat" | "participants" | "files" | "info" | "ai" | "breakout" | null;
 
 function RoomPage() {
-  const [people] = useState<Participant[]>(seedParticipants);
+  const [meetingCode, setMeetingCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const codeParam = params.get("code");
+      if (codeParam) return codeParam;
+      return localStorage.getItem("current_meeting_code") || "MTR-481-902";
+    }
+    return "MTR-481-902";
+  });
+
+  const [meeting, setMeeting] = useState<any>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [sharing, setSharing] = useState(false);
@@ -62,13 +70,256 @@ function RoomPage() {
   const [showReactions, setShowReactions] = useState(false);
   const [flying, setFlying] = useState<{ id: number; emoji: string }[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+
+  // WebRTC Stream refs
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peersRef = useRef<Record<string, RTCPeerConnection>>({});
+  const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
+
+  // WebSocket signaling
+  const {
+    connected,
+    messages,
+    participants,
+    sendMessage,
+    sendReaction: wsSendReaction,
+    sendHand,
+    sendSignal,
+    updateState,
+  } = useWebSocket(
+    meeting?.meetingId || "",
+    undefined,
+    async (signal: any) => {
+      await handleWebRTCSignal(signal);
+    }
+  );
+
+  useEffect(() => {
+    if (meetingCode) {
+      meetingsApi.searchByCode(meetingCode)
+        .then((res) => {
+          if (res && res.length > 0) {
+            setMeeting(res[0]);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [meetingCode]);
+
+  useEffect(() => {
+    // Access local media
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        localStreamRef.current = stream;
+        stream.getAudioTracks().forEach(track => { track.enabled = micOn; });
+        stream.getVideoTracks().forEach(track => { track.enabled = camOn; });
+      })
+      .catch((err) => {
+        console.warn("Failed to capture local media devices:", err);
+        toast.error("Camera/microphone access denied. Check browser permissions.");
+      });
+
+    return () => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      Object.values(peersRef.current).forEach(pc => pc.close());
+    };
+  }, []);
+
+  // Update backend about state change
+  useEffect(() => {
+    if (connected) {
+      updateState(micOn, camOn, sharing);
+    }
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach(track => { track.enabled = micOn; });
+      localStreamRef.current.getVideoTracks().forEach(track => { track.enabled = camOn; });
+    }
+  }, [micOn, camOn, sharing, connected]);
+
+  const handleWebRTCSignal = async (msg: any) => {
+    const { type, senderId, payload } = msg;
+    try {
+      if (type === "OFFER") {
+        const pc = getOrCreatePeerConnection(senderId);
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal("ANSWER", senderId, answer);
+      } else if (type === "ANSWER") {
+        const pc = peersRef.current[senderId];
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        }
+      } else if (type === "ICE_CANDIDATE") {
+        const pc = peersRef.current[senderId];
+        if (pc && payload) {
+          await pc.addIceCandidate(new RTCIceCandidate(payload));
+        }
+      }
+    } catch (e) {
+      console.error("Error handling WebRTC signal:", e);
+    }
+  };
+
+  const getOrCreatePeerConnection = (userId: string) => {
+    if (peersRef.current[userId]) {
+      return peersRef.current[userId];
+    }
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+    peersRef.current[userId] = pc;
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendSignal("ICE_CANDIDATE", userId, event.candidate);
+      }
+    };
+
+    pc.ontrack = (event) => {
+      setRemoteStreams(prev => ({
+        ...prev,
+        [userId]: event.streams[0]
+      }));
+    };
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+    }
+
+    return pc;
+  };
+
+  const initiateCall = (userId: string) => {
+    const pc = getOrCreatePeerConnection(userId);
+    pc.createOffer()
+      .then(offer => pc.setLocalDescription(offer))
+      .then(() => {
+        sendSignal("OFFER", userId, pc.localDescription);
+      })
+      .catch(e => console.error("Error creating WebRTC offer:", e));
+  };
+
+  // Trigger calls to new participants
+  useEffect(() => {
+    participants.forEach(p => {
+      if (!p.isYou && !peersRef.current[p.id]) {
+        initiateCall(p.id);
+      }
+    });
+  }, [participants]);
+
+  const toggleSharing = async () => {
+    if (!sharing) {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        // Replace video track in all peer connections
+        const screenTrack = screenStream.getVideoTracks()[0];
+        Object.values(peersRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(screenTrack);
+        });
+        screenTrack.onended = () => {
+          setSharing(false);
+          updateState(micOn, camOn, false);
+        };
+        setSharing(true);
+        updateState(micOn, camOn, true);
+      } catch (e) {
+        console.warn('Screen share cancelled or denied');
+      }
+    } else {
+      // Revert to camera
+      if (localStreamRef.current) {
+        const camTrack = localStreamRef.current.getVideoTracks()[0];
+        Object.values(peersRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender && camTrack) sender.replaceTrack(camTrack);
+        });
+      }
+      setSharing(false);
+      updateState(micOn, camOn, false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (!meeting?.meetingId && !meeting?.id) {
+      toast.error('Meeting not loaded yet');
+      return;
+    }
+    const mId = meeting.meetingId || meeting.id;
+    if (!isRecording) {
+      try {
+        const res = await recordingsApi.start(mId);
+        setRecordingId(res.id || res.recordingId);
+        setIsRecording(true);
+        toast.success('Recording started');
+      } catch (e: any) {
+        toast.error(e.message || 'Failed to start recording');
+      }
+    } else {
+      try {
+        if (recordingId) await recordingsApi.stop(recordingId);
+        setRecordingId(null);
+        setIsRecording(false);
+        toast.success('Recording stopped and saved');
+      } catch (e: any) {
+        toast.error(e.message || 'Failed to stop recording');
+      }
+    }
+  };
+
+  const endMeetingAndLeave = async () => {
+    if (meeting?.meetingId || meeting?.id) {
+      const mId = meeting.meetingId || meeting.id;
+      try {
+        await meetingsApi.endMeeting(mId);
+      } catch (_) { /* allow leave even if end fails */ }
+    }
+    window.location.href = '/dashboard';
+  };
 
   const sendReaction = (emoji: string) => {
     const id = Date.now() + Math.random();
     setFlying((f) => [...f, { id, emoji }]);
     setShowReactions(false);
+    wsSendReaction(emoji);
     setTimeout(() => setFlying((f) => f.filter((x) => x.id !== id)), 2500);
   };
+
+  const toggleHand = () => {
+    const nextHand = !handUp;
+    setHandUp(nextHand);
+    sendHand(nextHand);
+  };
+
+  // Build client people list
+  const activePeople: Participant[] = participants.length > 0
+    ? participants.map(p => ({
+        id: p.id,
+        name: p.name,
+        initials: p.initials,
+        role: p.role || (p.isYou ? "Host" : "Participant"),
+        micOn: p.micOn,
+        cameraOn: p.cameraOn,
+        speaking: p.speaking,
+        connection: p.connection,
+        handRaised: p.handRaised,
+        isYou: p.isYou
+      }))
+    : [
+        { id: "you", name: "You", initials: "ME", role: "Host", micOn, cameraOn: camOn, speaking: false, connection: "excellent", isYou: true }
+      ];
+
+  const ROOM_LINK = typeof window !== 'undefined'
+    ? `${window.location.origin}/lobby?code=${meetingCode}`
+    : `https://meetrivo.com/j/${meetingCode}`;
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-background">
@@ -77,14 +328,14 @@ function RoomPage() {
         <div className="flex min-w-0 items-center gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold">Product Sync — Q3 Roadmap</p>
+              <p className="truncate text-sm font-semibold">{meeting?.title || "Product Sync — Q3 Roadmap"}</p>
               <span className="hidden items-center gap-1.5 rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success sm:flex">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" /> Live
               </span>
             </div>
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
-              <FiLock className="h-3 w-3 text-success" /> {ROOM_CODE}
-              <span className="hidden sm:inline">· {people.length} participants</span>
+              <FiLock className="h-3 w-3 text-success" /> {meetingCode}
+              <span className="hidden sm:inline">· {activePeople.length} participants</span>
             </p>
           </div>
         </div>
@@ -99,7 +350,14 @@ function RoomPage() {
       {/* Stage + inline drawer (desktop) */}
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <main className="relative flex-1 overflow-hidden px-3 pb-3 sm:px-6">
-          <VideoGrid people={people} youCam={camOn} youMic={micOn} sharing={sharing} />
+          <VideoGrid
+            people={activePeople}
+            localStream={localStreamRef.current}
+            remoteStreams={remoteStreams}
+            youCam={camOn}
+            youMic={micOn}
+            sharing={sharing}
+          />
           {/* flying reactions */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <AnimatePresence>
@@ -122,7 +380,16 @@ function RoomPage() {
         {/* Drawers */}
         <AnimatePresence>
           {drawer && (
-            <RoomDrawer kind={drawer} people={people} onClose={() => setDrawer(null)} />
+            <RoomDrawer
+              kind={drawer}
+              people={activePeople}
+              messages={messages}
+              onSendMessage={sendMessage}
+              onClose={() => setDrawer(null)}
+              meetingInfo={meeting}
+              meetingCode={meetingCode}
+              meetingLink={ROOM_LINK}
+            />
           )}
         </AnimatePresence>
       </div>
@@ -135,18 +402,20 @@ function RoomPage() {
         handUp={handUp}
         drawer={drawer}
         showReactions={showReactions}
+        isRecording={isRecording}
         onMic={() => setMicOn((v) => !v)}
         onCam={() => setCamOn((v) => !v)}
-        onShare={() => setSharing((v) => !v)}
-        onHand={() => setHandUp((v) => !v)}
+        onShare={toggleSharing}
+        onHand={toggleHand}
         onReactions={() => setShowReactions((v) => !v)}
         onSendReaction={sendReaction}
         onDrawer={(d) => setDrawer((cur) => (cur === d ? null : d))}
+        onRecord={toggleRecording}
+        onEnd={endMeetingAndLeave}
       />
 
-
       {/* Share modal */}
-      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} />
+      <ShareDialog open={shareOpen} roomLink={ROOM_LINK} onClose={() => setShareOpen(false)} />
     </div>
   );
 }
@@ -166,15 +435,17 @@ function MeetingTimer() {
   );
 }
 
-
-
 function VideoGrid({
   people,
+  localStream,
+  remoteStreams,
   youCam,
   youMic,
   sharing,
 }: {
   people: Participant[];
+  localStream: MediaStream | null;
+  remoteStreams: Record<string, MediaStream>;
   youCam: boolean;
   youMic: boolean;
   sharing: boolean;
@@ -195,7 +466,11 @@ function VideoGrid({
         <div className="flex gap-3 overflow-x-auto lg:w-44 lg:flex-col lg:overflow-y-auto">
           {people.map((p) => (
             <div key={p.id} className="w-32 shrink-0 lg:w-full">
-              <ParticipantCard p={localized(p, youCam, youMic)} compact />
+              <ParticipantCard
+                p={localized(p, youCam, youMic)}
+                stream={p.isYou ? localStream : remoteStreams[p.id]}
+                compact
+              />
             </div>
           ))}
         </div>
@@ -206,7 +481,11 @@ function VideoGrid({
   return (
     <div className={cn("grid h-full auto-rows-fr gap-3", cols)}>
       {people.map((p) => (
-        <ParticipantCard key={p.id} p={localized(p, youCam, youMic)} />
+        <ParticipantCard
+          key={p.id}
+          p={localized(p, youCam, youMic)}
+          stream={p.isYou ? localStream : remoteStreams[p.id]}
+        />
       ))}
     </div>
   );
@@ -217,7 +496,15 @@ function localized(p: Participant, youCam: boolean, youMic: boolean): Participan
   return { ...p, cameraOn: youCam, micOn: youMic };
 }
 
-function ParticipantCard({ p, compact }: { p: Participant; compact?: boolean }) {
+function ParticipantCard({ p, stream, compact }: { p: Participant; stream?: MediaStream | null; compact?: boolean }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (videoRef.current && stream && p.cameraOn) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream, p.cameraOn]);
+
   return (
     <motion.div
       layout
@@ -228,20 +515,27 @@ function ParticipantCard({ p, compact }: { p: Participant; compact?: boolean }) 
         compact ? "aspect-video" : "min-h-32",
       )}
     >
-      {p.cameraOn ? (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,oklch(0.3_0.05_264),transparent)]" />
-      ) : null}
-      <div className="relative grid place-items-center">
-        <span
-          className={cn(
-            "grid place-items-center rounded-full bg-gradient-primary font-semibold text-primary-foreground",
-            compact ? "h-9 w-9 text-xs" : "h-16 w-16 text-xl",
-            p.speaking && "ring-2 ring-primary ring-offset-2 ring-offset-background",
-          )}
-        >
-          {p.initials}
-        </span>
-      </div>
+      {p.cameraOn && stream ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={p.isYou}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <div className="relative grid place-items-center">
+          <span
+            className={cn(
+              "grid place-items-center rounded-full bg-gradient-primary font-semibold text-primary-foreground",
+              compact ? "h-9 w-9 text-xs" : "h-16 w-16 text-xl",
+              p.speaking && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+            )}
+          >
+            {p.initials}
+          </span>
+        </div>
+      )}
 
       {/* hand raised */}
       {p.handRaised && (
@@ -252,7 +546,7 @@ function ParticipantCard({ p, compact }: { p: Participant; compact?: boolean }) 
 
       {/* bottom bar */}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/60 to-transparent px-3 py-2">
-        <span className={cn("truncate font-medium", compact ? "text-[10px]" : "text-xs")}>
+        <span className={cn("truncate font-medium text-white", compact ? "text-[10px]" : "text-xs")}>
           {p.name}
         </span>
         <span className="flex items-center gap-1.5">
@@ -263,7 +557,7 @@ function ParticipantCard({ p, compact }: { p: Participant; compact?: boolean }) 
               p.micOn ? "text-foreground" : "bg-destructive/80 text-destructive-foreground",
             )}
           >
-            {p.micOn ? <FiMic className="h-3 w-3" /> : <FiMicOff className="h-3 w-3" />}
+            {p.micOn ? <FiMic className="h-3 w-3 text-white" /> : <FiMicOff className="h-3 w-3 text-white" />}
           </span>
         </span>
       </div>
@@ -284,6 +578,7 @@ function ControlDock({
   handUp,
   drawer,
   showReactions,
+  isRecording,
   onMic,
   onCam,
   onShare,
@@ -291,6 +586,8 @@ function ControlDock({
   onReactions,
   onSendReaction,
   onDrawer,
+  onRecord,
+  onEnd,
 }: {
   micOn: boolean;
   camOn: boolean;
@@ -298,6 +595,7 @@ function ControlDock({
   handUp: boolean;
   drawer: DrawerKind;
   showReactions: boolean;
+  isRecording: boolean;
   onMic: () => void;
   onCam: () => void;
   onShare: () => void;
@@ -305,6 +603,8 @@ function ControlDock({
   onReactions: () => void;
   onSendReaction: (e: string) => void;
   onDrawer: (d: DrawerKind) => void;
+  onRecord: () => void;
+  onEnd: () => void;
 }) {
   return (
     <div className="relative z-30 flex justify-center px-3 pb-4 pt-1 sm:pb-6">
@@ -336,10 +636,10 @@ function ControlDock({
         <DockBtn label={camOn ? "Stop video" : "Start video"} active={camOn} danger={!camOn} onClick={onCam}>
           {camOn ? <FiVideo /> : <FiVideoOff />}
         </DockBtn>
-        <DockBtn label="Share screen" active={sharing} onClick={onShare} className="hidden sm:flex">
+        <DockBtn label={"Share screen"} active={sharing} onClick={onShare} className="hidden sm:flex">
           <FiMonitor />
         </DockBtn>
-        <DockBtn label="Raise hand" active={handUp} onClick={onHand}>
+        <DockBtn label={handUp ? "Lower hand" : "Raise hand"} active={handUp} onClick={onHand}>
           <TbHandStop />
         </DockBtn>
         <DockBtn label="Reactions" active={showReactions} onClick={onReactions}>
@@ -355,14 +655,21 @@ function ControlDock({
         <DockBtn label="Files" active={drawer === "files"} onClick={() => onDrawer("files")} className="hidden sm:flex">
           <FiFile />
         </DockBtn>
+        <DockBtn label="AI Assistant" active={drawer === "ai"} onClick={() => onDrawer("ai")} className="hidden sm:flex">
+          <FiCpu />
+        </DockBtn>
+        <DockBtn label="Breakout Rooms" active={drawer === "breakout"} onClick={() => onDrawer("breakout")} className="hidden sm:flex">
+          <FiGrid />
+        </DockBtn>
         <DockBtn label="Info" active={drawer === "info"} onClick={() => onDrawer("info")} className="hidden sm:flex">
           <FiInfo />
         </DockBtn>
         <span className="mx-0.5 h-7 w-px bg-border" />
-        <Button asChild variant="destructive" size="icon" className="rounded-xl">
-          <Link to="/dashboard" aria-label="End meeting">
-            <FiPhoneOff />
-          </Link>
+        <DockBtn label={isRecording ? "Stop recording" : "Record"} active={isRecording} danger={isRecording} onClick={onRecord} className="hidden sm:flex">
+          <FiLoader className={isRecording ? "animate-pulse" : ""} />
+        </DockBtn>
+        <Button variant="destructive" size="icon" className="rounded-xl" onClick={onEnd} aria-label="End meeting">
+          <FiPhoneOff />
         </Button>
       </div>
     </div>
@@ -409,17 +716,29 @@ function DockBtn({
 function RoomDrawer({
   kind,
   people,
+  messages,
+  onSendMessage,
   onClose,
+  meetingInfo,
+  meetingCode,
+  meetingLink,
 }: {
   kind: Exclude<DrawerKind, null>;
   people: Participant[];
+  messages: WsMessage[];
+  onSendMessage: (text: string) => void;
   onClose: () => void;
+  meetingInfo: any;
+  meetingCode: string;
+  meetingLink: string;
 }) {
   const titles: Record<string, string> = {
     chat: "Chat",
     participants: `Participants (${people.length})`,
     files: "Shared files",
     info: "Meeting info",
+    ai: "AI Assistant",
+    breakout: "Breakout Rooms",
   };
   return (
     <>
@@ -437,117 +756,73 @@ function RoomDrawer({
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
         className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-border bg-card md:static md:z-auto md:my-0 md:w-80 md:max-w-none md:rounded-l-2xl"
       >
-
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold">{titles[kind]}</h2>
-          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 hover:bg-surface">
+          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 hover:bg-surface animate-pulse">
             <FiX />
           </button>
         </div>
-        <div className="min-h-0 flex-1">
-          {kind === "chat" && <ChatPanel />}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {kind === "chat" && <ChatPanel messages={messages} onSend={onSendMessage} />}
           {kind === "participants" && <ParticipantsPanel people={people} />}
           {kind === "files" && <FilesPanel />}
-          {kind === "info" && <InfoPanel />}
+          {kind === "info" && <InfoPanel meeting={meetingInfo} meetingCode={meetingCode} meetingLink={meetingLink} />}
+          {kind === "ai" && <AiPanel meetingId={meetingInfo?.id || meetingInfo?.meetingId || meetingCode} />}
+          {kind === "breakout" && <BreakoutPanel meetingId={meetingInfo?.id || meetingInfo?.meetingId || meetingCode} people={people} />}
         </div>
       </motion.aside>
     </>
   );
 }
 
-function ChatPanel() {
-  const [messages, setMessages] = useState<ChatMessage[]>(seedChat);
+function ChatPanel({ messages, onSend }: { messages: WsMessage[]; onSend: (text: string) => void }) {
   const [text, setText] = useState("");
-  const [typing, setTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typing]);
+  }, [messages]);
 
   const send = () => {
     const t = text.trim();
     if (!t) return;
-    setMessages((m) => [
-      ...m,
-      { id: `me-${Date.now()}`, author: "You", initials: "JR", text: t, time: now(), self: true },
-    ]);
+    onSend(t);
     setText("");
-    setTyping(true);
-    setTimeout(() => {
-      setTyping(false);
-      setMessages((m) => [
-        ...m,
-        {
-          id: `bot-${Date.now()}`,
-          author: "Maya Chen",
-          initials: "MC",
-          text: autoReplies[Math.floor(Math.random() * autoReplies.length)],
-          time: now(),
-        },
-      ]);
-    }, 1600);
   };
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         <AnimatePresence initial={false}>
-          {messages.map((m) =>
-            m.system ? (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-center text-xs text-muted-foreground"
-              >
-                {m.text} · {m.time}
-              </motion.div>
-            ) : (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={cn("flex gap-2", m.self && "flex-row-reverse")}
-              >
-                <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface text-[10px] font-semibold">
-                  {m.initials}
-                </span>
-                <div className={cn("max-w-[75%]", m.self && "text-right")}>
-                  <p
-                    className={cn(
-                      "inline-block rounded-2xl px-3 py-2 text-sm",
-                      m.self
-                        ? "bg-gradient-primary text-primary-foreground"
-                        : "bg-surface text-foreground",
-                    )}
-                  >
-                    {m.text}
-                  </p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    {m.self ? "" : `${m.author} · `}
-                    {m.time}
-                  </p>
-                </div>
-              </motion.div>
-            ),
-          )}
+          {messages.map((m) => (
+            <motion.div
+              key={m.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={cn("flex gap-2", m.self && "flex-row-reverse")}
+            >
+              <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface text-[10px] font-semibold">
+                {m.initials}
+              </span>
+              <div className={cn("max-w-[75%]", m.self && "text-right")}>
+                <p
+                  className={cn(
+                    "inline-block rounded-2xl px-3 py-2 text-sm",
+                    m.self
+                      ? "bg-gradient-primary text-primary-foreground"
+                      : "bg-surface text-foreground",
+                  )}
+                >
+                  {m.text}
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  {m.self ? "" : `${m.author} · `}
+                  {m.time}
+                </p>
+              </div>
+            </motion.div>
+          ))}
         </AnimatePresence>
-        {typing && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-surface text-[10px] font-semibold">MC</span>
-            <span className="flex gap-1 rounded-2xl bg-surface px-3 py-2.5">
-              {[0, 1, 2].map((i) => (
-                <motion.span
-                  key={i}
-                  className="h-1.5 w-1.5 rounded-full bg-muted-foreground"
-                  animate={{ opacity: [0.3, 1, 0.3] }}
-                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
-            </span>
-          </div>
-        )}
         <div ref={endRef} />
       </div>
       <div className="flex items-center gap-2 border-t border-border p-3">
@@ -592,31 +867,68 @@ function ParticipantsPanel({ people }: { people: Participant[] }) {
 }
 
 function FilesPanel() {
+  const [fileItems, setFileItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    filesApi.getAll()
+      .then((data: any[]) => {
+        setFileItems(data || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <FiLoader className="h-6 w-6 animate-spin text-primary" />
+        <p className="mt-2 text-xs text-muted-foreground">Loading files...</p>
+      </div>
+    );
+  }
+
+  const items = fileItems.length > 0 ? fileItems : [];
+
   return (
     <div className="space-y-2 overflow-y-auto p-3">
-      {sharedFiles.map((f) => (
-        <div key={f.id} className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-3">
-          <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-primary">
-            <FiFile className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{f.name}</p>
-            <p className="text-[11px] text-muted-foreground">{f.size} · {f.owner} · {f.time}</p>
-          </div>
+      {items.length === 0 ? (
+        <div className="py-8 text-center">
+          <FiFile className="mx-auto h-8 w-8 text-muted-foreground/50" />
+          <p className="mt-2 text-xs text-muted-foreground">No shared files yet</p>
         </div>
-      ))}
+      ) : (
+        items.map((f: any) => (
+          <a
+            key={f.id}
+            href={filesApi.getDownloadUrl(f.id)}
+            download={f.originalName || f.filename}
+            className="flex items-center gap-3 rounded-xl border border-border bg-background/50 p-3 hover:bg-surface/60 transition-colors"
+          >
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-primary">
+              <FiFile className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{f.originalName || f.filename || "File"}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {f.uploaderName || "You"} · {f.createdAt ? new Date(f.createdAt).toLocaleDateString() : ""}
+              </p>
+            </div>
+          </a>
+        ))
+      )}
     </div>
   );
 }
 
-function InfoPanel() {
+function InfoPanel({ meeting, meetingCode, meetingLink }: { meeting: any; meetingCode: string; meetingLink: string }) {
   return (
     <div className="space-y-4 p-4 text-sm">
-      <Info label="Meeting" value="Product Sync — Q3 Roadmap" />
-      <Info label="Room code" value={ROOM_CODE} />
-      <Info label="Host" value="Jordan Rivera" />
-      <Info label="Started" value="Today, 10:30 AM" />
-      <Info label="Link" value={ROOM_LINK} />
+      <Info label="Meeting" value={meeting?.title || "Product Sync — Q3 Roadmap"} />
+      <Info label="Room code" value={meetingCode} />
+      <Info label="Host" value={meeting?.hostName || "Jordan Rivera"} />
+      <Info label="Started" value={meeting?.actualStartTime ? new Date(meeting.actualStartTime).toLocaleTimeString() : "Live"} />
+      <Info label="Link" value={meetingLink} />
     </div>
   );
 }
@@ -630,10 +942,10 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ShareDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function ShareDialog({ open, roomLink, onClose }: { open: boolean; roomLink: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    navigator.clipboard?.writeText(ROOM_LINK);
+    navigator.clipboard?.writeText(roomLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -645,13 +957,13 @@ function ShareDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
         </DialogHeader>
         <div className="flex flex-col items-center gap-4">
           <div className="rounded-2xl bg-white p-3 shadow-soft">
-            <QrCode value={ROOM_LINK} size={180} />
+            <QrCode value={roomLink} size={180} />
           </div>
           <p className="text-center text-sm text-muted-foreground">
             Scan the QR code to join instantly, or share the link below.
           </p>
           <div className="flex w-full items-center gap-2 rounded-xl border border-border bg-background p-1.5 pl-3">
-            <span className="flex-1 truncate text-sm">{ROOM_LINK}</span>
+            <span className="flex-1 truncate text-sm">{roomLink}</span>
             <Button size="sm" variant={copied ? "secondary" : "default"} onClick={copy}>
               {copied ? <FiCheck /> : <FiCopy />}
               {copied ? "Copied" : "Copy"}
@@ -663,6 +975,164 @@ function ShareDialog({ open, onClose }: { open: boolean; onClose: () => void }) 
   );
 }
 
-function now() {
-  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function AiPanel({ meetingId }: { meetingId: string }) {
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [transcript, setTranscript] = useState("");
+
+  const askAi = async () => {
+    if (!question.trim()) return;
+    const userQ = question;
+    setQuestion("");
+    setMessages(prev => [...prev, { role: "user", text: userQ }]);
+    setLoading(true);
+    try {
+      const res = await aiApi.ask(userQ, meetingId);
+      setMessages(prev => [...prev, { role: "ai", text: res.answer || res.content || JSON.stringify(res) }]);
+    } catch (e: any) {
+      setMessages(prev => [...prev, { role: "ai", text: `Error: ${e.message || "Failed to query AI"}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getSummary = async () => {
+    try {
+      const res = await aiApi.getSummary(meetingId);
+      setSummary(res.summary || res.content || "No summary available yet.");
+      toast.success("AI Summary generated!");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load summary");
+    }
+  };
+
+  const getTranscript = async () => {
+    try {
+      const res = await aiApi.getTranscript(meetingId);
+      setTranscript(res.transcript || res.content || "No transcript compiled yet.");
+      toast.success("Transcript retrieved!");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load transcript");
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col p-4 text-xs space-y-4 overflow-y-auto">
+      <div className="flex gap-2">
+        <Button variant="glass" size="sm" onClick={getSummary} className="flex-1">Summary</Button>
+        <Button variant="glass" size="sm" onClick={getTranscript} className="flex-1">Transcript</Button>
+      </div>
+
+      {summary && (
+        <div className="rounded-xl border border-border bg-surface/30 p-3 space-y-1">
+          <p className="font-semibold text-foreground">AI Meeting Summary</p>
+          <p className="text-muted-foreground whitespace-pre-wrap">{summary}</p>
+        </div>
+      )}
+
+      {transcript && (
+        <div className="rounded-xl border border-border bg-surface/30 p-3 space-y-1">
+          <p className="font-semibold text-foreground">Session Transcript</p>
+          <p className="text-muted-foreground whitespace-pre-wrap">{transcript}</p>
+        </div>
+      )}
+
+      <div className="flex-1 border-t border-border/40 pt-3 space-y-2 max-h-[160px] overflow-y-auto">
+        {messages.map((m, i) => (
+          <div key={i} className={`p-2 rounded-xl max-w-[85%] ${m.role === "user" ? "bg-gradient-primary text-primary-foreground ml-auto" : "bg-surface text-foreground"}`}>
+            <p>{m.text}</p>
+          </div>
+        ))}
+        {loading && <div className="text-muted-foreground animate-pulse">AI is typing...</div>}
+      </div>
+
+      <div className="flex gap-2 pt-2 border-t border-border/40">
+        <input
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask AI a question..."
+          className="h-9 flex-1 rounded-lg border border-border bg-background px-2.5 outline-none focus:border-primary"
+        />
+        <Button size="sm" onClick={askAi} disabled={loading} className="cursor-pointer"><FiSend /></Button>
+      </div>
+    </div>
+  );
+}
+
+function BreakoutPanel({ meetingId, people }: { meetingId: string; people: Participant[] }) {
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [roomName, setRoomName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadRooms();
+  }, [meetingId]);
+
+  const loadRooms = async () => {
+    try {
+      const list = await breakoutRoomsApi.getAll(meetingId);
+      setRooms(list || []);
+    } catch (_) {}
+  };
+
+  const createRoom = async () => {
+    if (!roomName.trim()) return;
+    setLoading(true);
+    try {
+      await breakoutRoomsApi.create(meetingId, { roomName });
+      toast.success("Breakout room created!");
+      setRoomName("");
+      loadRooms();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to create breakout room");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const endRoom = async (roomId: string) => {
+    try {
+      await breakoutRoomsApi.end(roomId);
+      toast.success("Breakout room closed");
+      loadRooms();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to end breakout room");
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col p-4 text-xs space-y-4 overflow-y-auto">
+      <div className="space-y-2">
+        <p className="font-semibold text-foreground">Create Breakout Room</p>
+        <div className="flex gap-2">
+          <input
+            value={roomName}
+            onChange={(e) => setRoomName(e.target.value)}
+            placeholder="Room name (e.g. Brainstorm)"
+            className="h-9 flex-1 rounded-lg border border-border bg-background px-2.5 outline-none focus:border-primary"
+          />
+          <Button size="sm" onClick={createRoom} disabled={loading} className="cursor-pointer">Add</Button>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-3 pt-3 border-t border-border/40">
+        <p className="font-semibold text-foreground">Active Breakout Rooms</p>
+        {rooms.length === 0 ? (
+          <p className="text-muted-foreground text-center py-4">No breakout rooms active</p>
+        ) : (
+          rooms.map((r) => (
+            <div key={r.id} className="rounded-xl border border-border bg-surface/30 p-3 flex justify-between items-start gap-4">
+              <div>
+                <p className="font-semibold text-foreground">{r.roomName || r.name}</p>
+                <p className="text-muted-foreground text-[10px] mt-0.5">Status: {r.status || "ACTIVE"}</p>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => endRoom(r.id)} className="text-destructive hover:bg-destructive/10 cursor-pointer">End</Button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }
