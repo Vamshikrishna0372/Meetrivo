@@ -70,6 +70,25 @@ public class NotificationService extends BaseService {
         notificationRepository.saveAll(unread);
     }
 
+    @CacheEvict(value = "notifications", key = "#result")
+    public void deleteNotification(String id) {
+        Notification notification = notificationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Notification not found: " + id));
+
+        User user = getCurrentUser();
+        if (!notification.getUserId().equals(user.getId())) {
+            throw new RuntimeException("Access denied: You do not own this notification");
+        }
+
+        notificationRepository.deleteById(id);
+        logInfo("Notification deleted: " + id);
+    }
+
+    public long getUnreadCount() {
+        User user = getCurrentUser();
+        return notificationRepository.countByUserIdAndReadFalse(user.getId());
+    }
+
     public List<Notification> getNotifications() {
         User user = getCurrentUser();
         return getNotificationsForUser(user.getId());

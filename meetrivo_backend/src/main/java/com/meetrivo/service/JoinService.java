@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -53,12 +55,16 @@ public class JoinService extends BaseService {
 
         MeetingParticipant participant = addParticipant(meeting, user, role);
         try {
-            presenceService.handleUserJoined(meeting.getMeetingId(), user.getId());
+            if (participant.isApproved()) {
+                presenceService.handleUserJoined(meeting.getMeetingId(), user.getId());
+            } else {
+                presenceService.handleUserWaiting(meeting.getMeetingId(), user.getId());
+            }
         } catch (Exception e) {
-            logError("Failed to broadcast real-time user join event", e);
+            logError("Failed to broadcast real-time user join/waiting event", e);
         }
         analyticsService.trackEvent(AnalyticsEventType.MEETING_JOINED, user.getId(), meeting.getMeetingId(), null);
-        logInfo("User: " + user.getUsername() + " joined meeting: " + meeting.getMeetingId() + " as role: " + role);
+        logInfo("User: " + user.getUsername() + " joined/waiting in meeting: " + meeting.getMeetingId() + " as role: " + role);
 
         return mapToParticipantResponse(participant);
     }
@@ -128,6 +134,39 @@ public class JoinService extends BaseService {
         }
         updateParticipantCount(meeting.getMeetingId());
         return savedParticipant;
+    }
+
+    public ParticipantResponse approveParticipant(String meetingId, String userId) {
+        MeetingParticipant participant = meetingParticipantRepository
+                .findByMeetingIdAndUserId(meetingId, userId)
+                .orElseThrow(() -> new RuntimeException("Participant not found in waiting room"));
+        participant.setApproved(true);
+        participant.setActive(true);
+        participant.setJoinedAt(LocalDateTime.now());
+        meetingParticipantRepository.save(participant);
+        attendanceService.recordJoin(meetingId, userId, participant.getUsername(), participant.getDisplayName());
+        updateParticipantCount(meetingId);
+        try {
+            presenceService.handleUserJoined(meetingId, userId);
+        } catch (Exception e) {
+            logError("Failed to broadcast admit event", e);
+        }
+        return mapToParticipantResponse(participant);
+    }
+
+    public void rejectParticipant(String meetingId, String userId) {
+        MeetingParticipant participant = meetingParticipantRepository
+                .findByMeetingIdAndUserId(meetingId, userId)
+                .orElseThrow(() -> new RuntimeException("Participant not found"));
+        participant.setApproved(false);
+        participant.setActive(false);
+        participant.setLeftAt(LocalDateTime.now());
+        meetingParticipantRepository.save(participant);
+        try {
+            presenceService.handleUserWaitingLeave(meetingId, userId, participant.getUsername());
+        } catch (Exception e) {
+            logError("Failed to broadcast reject event", e);
+        }
     }
 
     public void removeParticipant(String meetingId, String userId) {

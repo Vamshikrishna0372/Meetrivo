@@ -4,7 +4,8 @@ import { FiEdit2, FiVideo, FiClock, FiLayers, FiLoader } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Reveal } from "@/components/shared/Reveal";
 import { Button } from "@/components/ui/button";
-import { users, analytics as analyticsApi } from "@/lib/apiClient";
+import { users, analytics as analyticsApi, BACKEND_BASE_URL } from "@/lib/apiClient";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,26 @@ function ProfilePage() {
   const [editBio, setEditBio] = useState("");
   const [saving, setSaving] = useState(false);
   const [statsData, setStatsData] = useState({ meetings: 0, hours: 0, workspaces: 0 });
+  const [uploadingPic, setUploadingPic] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPic(true);
+    try {
+      const res = await users.uploadProfilePicture(file);
+      setProfile(res);
+      localStorage.setItem("meetrivo_user", JSON.stringify(res));
+      toast.success("Profile picture updated successfully");
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload profile picture");
+    } finally {
+      setUploadingPic(false);
+    }
+  };
 
   useEffect(() => {
     loadProfile();
@@ -105,9 +126,34 @@ function ProfilePage() {
           <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-8">
             <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/15 blur-[80px]" />
             <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:text-left">
-              <span className="grid h-20 w-20 place-items-center rounded-full bg-gradient-primary text-2xl font-bold text-primary-foreground shadow-glow">
-                {initials}
-              </span>
+              <div className="relative group shrink-0 h-20 w-20">
+                {profile?.profilePicture ? (
+                  <img
+                    src={profile.profilePicture.startsWith("http") ? profile.profilePicture : `${BACKEND_BASE_URL}${profile.profilePicture}`}
+                    alt={profile.fullName || profile.username}
+                    className="h-20 w-20 rounded-full object-cover shadow-glow border border-primary/20"
+                  />
+                ) : (
+                  <span className="grid h-20 w-20 place-items-center rounded-full bg-gradient-primary text-2xl font-bold text-primary-foreground shadow-glow">
+                    {initials}
+                  </span>
+                )}
+                {uploadingPic ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full">
+                    <FiLoader className="h-5 w-5 animate-spin text-white" />
+                  </div>
+                ) : (
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/60 text-white rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity text-xs font-semibold">
+                    Change
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                  </label>
+                )}
+              </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold">{profile?.fullName || profile?.username}</h2>
                 <p className="text-sm text-muted-foreground">{profile?.role || "Member"}</p>

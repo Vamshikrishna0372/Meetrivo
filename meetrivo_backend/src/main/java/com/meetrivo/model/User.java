@@ -39,7 +39,7 @@ public class User implements UserDetails {
     private String bio;
 
     @Builder.Default
-    private Role role = Role.USER;
+    private Role role = Role.MEMBER;
 
     @Builder.Default
     private AccountStatus accountStatus = AccountStatus.PENDING_VERIFICATION;

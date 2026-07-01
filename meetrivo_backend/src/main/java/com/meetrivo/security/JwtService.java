@@ -45,9 +45,18 @@ public class JwtService {
             UserDetails userDetails,
             long expiration
     ) {
+        Map<String, Object> claims = new java.util.HashMap<>(extraClaims);
+        if (userDetails instanceof com.meetrivo.model.User) {
+            claims.put("role", ((com.meetrivo.model.User) userDetails).getRole().name());
+        } else {
+            userDetails.getAuthorities().stream()
+                    .filter(a -> a.getAuthority().startsWith("ROLE_"))
+                    .findFirst()
+                    .ifPresent(a -> claims.put("role", a.getAuthority().substring(5)));
+        }
         return Jwts
                 .builder()
-                .claims(extraClaims)
+                .claims(claims)
                 .subject(userDetails.getUsername())
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + expiration))

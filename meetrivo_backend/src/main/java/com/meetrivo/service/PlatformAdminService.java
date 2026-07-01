@@ -44,7 +44,7 @@ public class PlatformAdminService extends BaseService {
 
     private void validateAdminOrSuperAdmin() {
         User user = getCurrentUser();
-        if (user.getRole() != Role.ADMIN && user.getRole() != Role.SUPER_ADMIN) {
+        if (user.getRole() != Role.ORGANIZATION_ADMIN && user.getRole() != Role.ORGANIZATION_OWNER && user.getRole() != Role.SUPER_ADMIN) {
             throw new RuntimeException("Access Denied: Admin or Super Admin role required");
         }
     }

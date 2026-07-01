@@ -47,6 +47,20 @@ function AdminPage() {
   const [billingAnalytics, setBillingAnalytics] = useState<any>(null);
 
   useEffect(() => {
+    const stored = localStorage.getItem("meetrivo_user");
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        if (u.role !== "SUPER_ADMIN" && u.role !== "ORGANIZATION_ADMIN" && u.role !== "ORGANIZATION_OWNER") {
+          toast.error("Access Denied: Admin role required");
+          window.location.href = "/dashboard";
+          return;
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
     loadTab(activeTab);
   }, [activeTab]);
 

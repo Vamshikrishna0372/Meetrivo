@@ -34,4 +34,13 @@ public class OrganizationMember {
     private OrganizationRole role;
 
     private LocalDateTime joinedAt;
+
+    @org.springframework.data.annotation.Transient
+    private String fullName;
+
+    @org.springframework.data.annotation.Transient
+    private String email;
+
+    @org.springframework.data.annotation.Transient
+    private String username;
 }

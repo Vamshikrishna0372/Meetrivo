@@ -7,10 +7,13 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class MailService extends BaseService {
 
     private final JavaMailSender mailSender;
+
+    public MailService(org.springframework.beans.factory.ObjectProvider<JavaMailSender> mailSenderProvider) {
+        this.mailSender = mailSenderProvider.getIfAvailable();
+    }
 
     @Value("${spring.mail.username:}")
     private String mailUsername;

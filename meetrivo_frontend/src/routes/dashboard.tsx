@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -52,6 +52,7 @@ type PreviewMeeting = {
 };
 
 function Dashboard() {
+  const navigate = useNavigate();
   const [preview, setPreview] = useState<PreviewMeeting | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [liveRecent, setLiveRecent] = useState<any[]>([]);
@@ -84,6 +85,22 @@ function Dashboard() {
 
   useEffect(() => {
     if (!auth.isAuthenticated()) return;
+
+    const user = auth.getUser();
+    if (user) {
+      if (user.role === "SUPER_ADMIN") {
+        navigate({ to: "/admin" });
+        return;
+      }
+      if (user.role === "ORGANIZATION_OWNER" || user.role === "ORGANIZATION_ADMIN" || user.role === "TEAM_MANAGER") {
+        navigate({ to: "/organizations" });
+        return;
+      }
+      if (user.role === "GUEST") {
+        navigate({ to: "/join" });
+        return;
+      }
+    }
 
     notifApi.getAll().then((data) => {
       if (data?.length) {

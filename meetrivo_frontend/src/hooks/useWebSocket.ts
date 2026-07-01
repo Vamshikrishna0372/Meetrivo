@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { meetings as meetingsApi } from "@/lib/apiClient";
 
 export type WsMessage = {
   id: string;
@@ -25,15 +26,41 @@ export type WsParticipant = {
 const MAX_RETRIES = 5;
 const BASE_RETRY_DELAY_MS = 1500;
 
+function mapParticipants(list: any[], currentUserId: string): WsParticipant[] {
+  if (!list || !Array.isArray(list)) return [];
+  return list.map((p: any) => {
+    const pUserId = p.userId || p.id;
+    return {
+      id: pUserId,
+      name: pUserId === currentUserId ? "You" : p.displayName || p.username || "Participant",
+      initials: (p.displayName || p.username || "P")
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase(),
+      role: p.role,
+      micOn: !p.isMuted,
+      cameraOn: p.isCameraEnabled !== false,
+      speaking: false,
+      connection: "excellent" as const,
+      handRaised: !!p.handRaised,
+      isYou: pUserId === currentUserId,
+    };
+  });
+}
+
 export function useWebSocket(
   meetingId: string,
   onMessageReceived?: (msg: any) => void,
   onSignalReceived?: (signal: any) => void,
+  onWhiteboardReceived?: (event: any) => void,
 ) {
   const ws = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<WsMessage[]>([]);
   const [participants, setParticipants] = useState<WsParticipant[]>([]);
+  const [waitingParticipants, setWaitingParticipants] = useState<WsParticipant[]>([]);
   const retryCount = useRef(0);
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const destroyed = useRef(false);
@@ -117,25 +144,46 @@ export function useWebSocket(
       if (frame.command === "CONNECTED") {
         setConnected(true);
         retryCount.current = 0;
+        
+        // Subscribe topics
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-chat", destination: `/topic/chat/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-sig", destination: `/topic/signaling/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-parts", destination: `/topic/participants/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-meeting", destination: `/topic/meeting/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-wb", destination: `/topic/whiteboard/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-breakout", destination: `/topic/breakout/${meetingId}` }));
+        
         socket.send(formatFrame("SEND", { destination: `/app/meeting/${meetingId}/join` }, ""));
         socket.send(formatFrame("SEND", {
           destination: `/app/meeting/${meetingId}/media/join`,
           "content-type": "application/json",
         }, "{}"));
+
+        // Fetch initial participants
+        meetingsApi.getParticipants(meetingId)
+          .then(data => {
+            setParticipants(mapParticipants(data, userId));
+          })
+          .catch(() => {});
+          
+        // Fetch initial waiting room participants
+        meetingsApi.getWaitingRoom(meetingId)
+          .then(data => {
+            setWaitingParticipants(mapParticipants(data, userId));
+          })
+          .catch(() => {});
+
       } else if (frame.command === "MESSAGE") {
         const dest = frame.headers["destination"] || "";
         try {
           const body = JSON.parse(frame.body);
 
           if (dest.includes("/topic/chat/")) {
-            if (body.eventType || !body.content) return;
+            // Filter out non-message events (reactions, hand raise) that share this topic
+            if (body.eventType && !body.message && !body.id) return;
             const isSelf = body.senderId === userId;
+            const messageText = body.message || body.content || "";
+            if (!messageText) return; // skip reaction/hand events
             const newMsg: WsMessage = {
               id: body.id || String(Math.random()),
               author: body.senderName || (isSelf ? "You" : "Participant"),
@@ -145,8 +193,8 @@ export function useWebSocket(
                 .join("")
                 .slice(0, 2)
                 .toUpperCase(),
-              text: body.content,
-              time: new Date(body.createdAt || Date.now()).toLocaleTimeString([], {
+              text: messageText,
+              time: new Date(body.timestamp || body.createdAt || Date.now()).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
@@ -159,25 +207,26 @@ export function useWebSocket(
             if (onSignalReceived) onSignalReceived(body);
 
           } else if (dest.includes("/topic/participants/")) {
-            if (Array.isArray(body)) {
-              const mapped: WsParticipant[] = body.map((p: any) => ({
-                id: p.userId,
-                name: p.userId === userId ? "You" : p.displayName || p.username || "Participant",
-                initials: (p.displayName || p.username || "P")
-                  .split(" ")
-                  .map((n: string) => n[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase(),
-                role: p.role,
-                micOn: !p.isMuted,
-                cameraOn: p.isCameraEnabled !== false,
-                speaking: false,
-                connection: "excellent" as const,
-                handRaised: !!p.handRaised,
-                isYou: p.userId === userId,
-              }));
-              setParticipants(mapped);
+            const eventType = body.eventType;
+            const currentParts = body.payload?.currentParticipants;
+            if (currentParts && Array.isArray(currentParts)) {
+              setParticipants(mapParticipants(currentParts, userId));
+            }
+            if (eventType === "WAITING_ROOM_JOIN" && body.payload?.participant) {
+              const p = body.payload.participant;
+              const mappedPart = mapParticipants([p], userId)[0];
+              if (mappedPart) {
+                setWaitingParticipants(prev => {
+                  if (prev.some(x => x.id === mappedPart.id)) return prev;
+                  return [...prev, mappedPart];
+                });
+              }
+            }
+            if (eventType === "WAITING_ROOM_LEAVE" || eventType === "USER_JOINED" || eventType === "HOST_JOINED") {
+              const evUserId = body.userId;
+              if (evUserId) {
+                setWaitingParticipants(prev => prev.filter(x => x.id !== evUserId));
+              }
             }
 
           } else if (dest.includes("/topic/meeting/")) {
@@ -208,8 +257,9 @@ export function useWebSocket(
                 }),
               );
             }
+          } else if (dest.includes("/topic/whiteboard/")) {
+            if (onWhiteboardReceived) onWhiteboardReceived(body);
           }
-          // Whiteboard and breakout room events are handled by those panels directly
         } catch (e) {
           console.error("Failed to parse WS message:", e);
         }
@@ -263,8 +313,6 @@ export function useWebSocket(
     };
   }, [meetingId, connect]);
 
-  // ── Outbound helpers ─────────────────────────────────────────────────────────
-
   const sendRaw = (destination: string, payload: any) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     ws.current.send(
@@ -313,7 +361,6 @@ export function useWebSocket(
     sendRaw(`/app/meeting/${meetingId}/media/screenshare`, { enabled: screenShare });
   };
 
-  // Send whiteboard event
   const sendWhiteboardEvent = (eventType: string, data: any) =>
     sendRaw(`/app/whiteboard/${meetingId}/event`, { eventType, ...data });
 
@@ -321,6 +368,8 @@ export function useWebSocket(
     connected,
     messages,
     participants,
+    waitingParticipants,
+    setWaitingParticipants,
     sendMessage,
     sendReaction,
     sendHand,

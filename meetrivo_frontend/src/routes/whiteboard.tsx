@@ -15,6 +15,7 @@ import { BsEraser } from "react-icons/bs";
 import { AppShell } from "@/layouts/AppShell";
 import { cn } from "@/lib/utils";
 import { whiteboard as whiteboardApi, auth } from "@/lib/apiClient";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/whiteboard")({
@@ -45,6 +46,24 @@ function WhiteboardPage() {
   const meetingId = typeof window !== "undefined"
     ? (localStorage.getItem("current_meeting_code") || "personal")
     : "personal";
+
+  const { connected, sendWhiteboardEvent } = useWebSocket(
+    meetingId,
+    undefined,
+    undefined,
+    (event: any) => {
+      const user = auth.getUser();
+      if (event.senderId && user && event.senderId === user.id) return;
+      if (event.eventType === "DRAW" && event.stroke) {
+        setStrokes((prev) => [...prev, event.stroke]);
+      } else if (event.eventType === "CLEAR") {
+        setStrokes([]);
+        setRedoStack([]);
+      } else if (event.eventType === "UNDO") {
+        setStrokes((s) => s.slice(0, -1));
+      }
+    }
+  );
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -119,6 +138,11 @@ function WhiteboardPage() {
     if (current.current) {
       const newStrokes = [...strokes, current.current];
       setStrokes(newStrokes);
+
+      if (connected) {
+        sendWhiteboardEvent("DRAW", { stroke: current.current });
+      }
+
       current.current = null;
 
       // Debounced auto-save
@@ -140,6 +164,9 @@ function WhiteboardPage() {
       setRedoStack((r) => [...r, last]);
       return s.slice(0, -1);
     });
+    if (connected) {
+      sendWhiteboardEvent("UNDO", {});
+    }
   };
   const redo = () => {
     setRedoStack((r) => {
@@ -152,6 +179,9 @@ function WhiteboardPage() {
   const clear = () => {
     setStrokes([]);
     setRedoStack([]);
+    if (connected) {
+      sendWhiteboardEvent("CLEAR", {});
+    }
     if (auth.isAuthenticated()) {
       whiteboardApi.save(meetingId, { strokes: [] }).catch(() => {});
     }

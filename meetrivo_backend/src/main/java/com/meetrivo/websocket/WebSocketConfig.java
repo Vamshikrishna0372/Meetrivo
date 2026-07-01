@@ -133,6 +133,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 destination.startsWith("/topic/chat/") ||
                 destination.startsWith("/topic/screenshare/") ||
                 destination.startsWith("/topic/presenter/") ||
+                destination.startsWith("/topic/whiteboard/") ||
                 destination.startsWith("/topic/recording/")) {
             String[] parts = destination.split("/");
             if (parts.length >= 4) {

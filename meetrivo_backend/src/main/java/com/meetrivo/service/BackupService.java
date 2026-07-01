@@ -198,7 +198,7 @@ public class BackupService extends BaseService {
 
     private void validateAdminAccess() {
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (user.getRole() != Role.ADMIN && user.getRole() != Role.SUPER_ADMIN) {
+        if (user.getRole() != Role.ORGANIZATION_ADMIN && user.getRole() != Role.ORGANIZATION_OWNER && user.getRole() != Role.SUPER_ADMIN) {
             throw new RuntimeException("Access Denied: Admin role required for backup operations");
         }
     }

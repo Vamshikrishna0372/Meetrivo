@@ -1,5 +1,6 @@
 package com.meetrivo.service;
 
+import com.meetrivo.dto.WhiteboardData;
 import com.meetrivo.model.*;
 import com.meetrivo.repository.WhiteboardElementRepository;
 import com.meetrivo.repository.WhiteboardSessionRepository;
@@ -17,14 +18,31 @@ public class WhiteboardService extends BaseService {
     private final WhiteboardSessionRepository whiteboardSessionRepository;
     private final WhiteboardElementRepository whiteboardElementRepository;
 
-    public List<WhiteboardElement> getWhiteboard(String meetingId) {
+    public WhiteboardData getWhiteboard(String meetingId) {
         logInfo("Retrieving whiteboard elements for meeting: " + meetingId);
-        return whiteboardElementRepository.findByMeetingIdAndDeletedFalseOrderByCreatedAtAsc(meetingId);
+        List<WhiteboardElement> elements = whiteboardElementRepository.findByMeetingIdAndDeletedFalseOrderByCreatedAtAsc(meetingId);
+        
+        // Ensure tool and size fields are populated for the frontend
+        for (WhiteboardElement el : elements) {
+            if (el.getTool() == null && el.getElementType() != null) {
+                el.setTool(el.getElementType().name().toLowerCase());
+            }
+            if (el.getSize() == 0 && el.getStrokeWidth() > 0) {
+                el.setSize(el.getStrokeWidth());
+            }
+        }
+        
+        return new WhiteboardData(elements);
     }
 
-    public List<WhiteboardElement> saveWhiteboard(String meetingId, List<WhiteboardElement> elements) {
+    public WhiteboardData saveWhiteboard(String meetingId, WhiteboardData data) {
         User user = getCurrentUser();
         logInfo("Saving whiteboard elements for meeting: " + meetingId + " by user: " + user.getUsername());
+
+        List<WhiteboardElement> elements = data.getStrokes();
+        if (elements == null) {
+            return getWhiteboard(meetingId);
+        }
 
         // Find or create session
         WhiteboardSession session = whiteboardSessionRepository.findByMeetingId(meetingId)
@@ -55,10 +73,25 @@ public class WhiteboardService extends BaseService {
             el.setCreatedAt(LocalDateTime.now());
             el.setUpdatedAt(LocalDateTime.now());
             el.setDeleted(false);
+
+            // Sync database properties and frontend properties
+            if (el.getTool() != null) {
+                String tool = el.getTool().toLowerCase();
+                if ("pen".equals(tool)) el.setElementType(WhiteboardElementType.PEN);
+                else if ("eraser".equals(tool)) el.setElementType(WhiteboardElementType.ERASER);
+                else if ("line".equals(tool)) el.setElementType(WhiteboardElementType.LINE);
+                else if ("rect".equals(tool)) el.setElementType(WhiteboardElementType.RECTANGLE);
+                else if ("circle".equals(tool)) el.setElementType(WhiteboardElementType.CIRCLE);
+                el.setStrokeWidth(el.getSize());
+            } else if (el.getElementType() != null) {
+                el.setTool(el.getElementType().name().toLowerCase());
+                el.setSize(el.getStrokeWidth());
+            }
+
             whiteboardElementRepository.save(el);
         }
 
-        return whiteboardElementRepository.findByMeetingIdAndDeletedFalseOrderByCreatedAtAsc(meetingId);
+        return getWhiteboard(meetingId);
     }
 
     private User getCurrentUser() {

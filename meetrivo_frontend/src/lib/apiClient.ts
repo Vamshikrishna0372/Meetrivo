@@ -128,6 +128,7 @@ export const users = {
   getLoginHistory: () => apiFetch<any[]>('/api/users/login-history'),
   deactivateAccount: () =>
     apiFetch<any>('/api/users/deactivate', { method: 'POST' }),
+  getUserStats: () => apiFetch<any>('/api/users/stats'),
 };
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
@@ -149,6 +150,8 @@ export const meetings = {
   // Get all meetings hosted by current user
   getAll: () => apiFetch<any[]>('/api/meetings/my'),
   getById: (id: string) => apiFetch<any>(`/api/meetings/${id}`),
+  getParticipants: (id: string) => apiFetch<any[]>(`/api/meetings/${id}/participants`),
+  getWaitingRoom: (id: string) => apiFetch<any[]>(`/api/meetings/${id}/waiting-room`),
   create: (data: any) =>
     apiFetch<any>('/api/meetings', { method: 'POST', body: JSON.stringify(data) }),
   update: (id: string, data: any) =>
@@ -161,6 +164,7 @@ export const meetings = {
     apiFetch<any>(`/api/meetings/${id}/start`, { method: 'POST' }),
   // Upcoming meetings from dashboard endpoint
   getUpcoming: () => apiFetch<any[]>('/api/dashboard/upcoming-meetings'),
+
   // Recent meetings from dashboard endpoint
   getRecent: () => apiFetch<any[]>('/api/dashboard/recent-meetings'),
   lock: (id: string) =>
@@ -226,18 +230,24 @@ export const notifications = {
     apiFetch<any>(`/api/notifications/${id}/read`, { method: 'PUT' }),
   markAllRead: () =>
     apiFetch<any>('/api/notifications/read-all', { method: 'PUT' }),
+  delete: (id: string) =>
+    apiFetch<any>(`/api/notifications/${id}`, { method: 'DELETE' }),
+  getUnreadCount: () =>
+    apiFetch<number>('/api/notifications/unread-count'),
 };
 
 // ── Analytics ───────────────────────────────────────────────────────────────
 
 export const analytics = {
-  // User-facing dashboard analytics — uses admin analytics endpoints (RBAC applied on backend)
-  getDashboard: () => apiFetch<any>('/api/admin/analytics/users'),
+  // User-level dashboard stats (accessible by all roles)
+  getDashboard: () => apiFetch<any>('/api/users/stats'),
   getEngagement: () => apiFetch<any>('/api/admin/analytics/meetings'),
   getMeetingStats: (meetingId: string) => apiFetch<any>(`/api/admin/analytics/meetings`),
   getUsage: () => apiFetch<any>('/api/admin/analytics/system'),
   // Per-organization analytics
   getOrgAnalytics: (orgId: string) => apiFetch<any>(`/api/organizations/${orgId}/analytics`),
+  // Admin-only full analytics
+  getAdminDashboard: () => apiFetch<any>('/api/admin/analytics/users'),
 };
 
 // ── Organizations ────────────────────────────────────────────────────────────
@@ -273,12 +283,15 @@ export const teams = {
   delete: (id: string) =>
     apiFetch<any>(`/api/teams/${id}`, { method: 'DELETE' }),
   addMember: (teamId: string, userId: string) =>
-    apiFetch<any>(`/api/teams/${teamId}/members`, {
+    apiFetch<any>(`/api/teams/${teamId}/members/${userId}`, {
       method: 'POST',
-      body: JSON.stringify({ userId }),
     }),
   removeMember: (teamId: string, userId: string) =>
     apiFetch<any>(`/api/teams/${teamId}/members/${userId}`, { method: 'DELETE' }),
+  transferManager: (teamId: string, newManagerId: string) =>
+    apiFetch<any>(`/api/teams/${teamId}/manager/${newManagerId}`, { method: 'PUT' }),
+  getMembers: (teamId: string) =>
+    apiFetch<any[]>(`/api/teams/${teamId}/members`),
 };
 
 // ── Departments ───────────────────────────────────────────────────────────────
@@ -292,6 +305,10 @@ export const departments = {
     apiFetch<any>(`/api/departments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (id: string) =>
     apiFetch<any>(`/api/departments/${id}`, { method: 'DELETE' }),
+  assignHead: (id: string, headId: string) =>
+    apiFetch<any>(`/api/departments/${id}/head/${headId}`, { method: 'PUT' }),
+  assignMembers: (id: string, memberIds: string[]) =>
+    apiFetch<any>(`/api/departments/${id}/members`, { method: 'PUT', body: JSON.stringify(memberIds) }),
 };
 
 // ── Recording ─────────────────────────────────────────────────────────────────

@@ -12,10 +12,14 @@ import lombok.NoArgsConstructor;
 public class OrganizationAnalyticsResponse {
     private long totalMembers;
     private long activeMembers;
+    private long onlineMembers;
     private long teamsCount;
     private long departmentsCount;
     private long meetingsCount;
+    private long activeMeetings;
     private double meetingHours;
     private double recordingUsageMb;
     private double storageUsageMb;
+    private long storageUsedBytes;
+    private String planType;
 }

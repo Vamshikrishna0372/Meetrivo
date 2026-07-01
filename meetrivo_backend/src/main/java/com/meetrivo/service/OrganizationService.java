@@ -275,7 +275,15 @@ public class OrganizationService extends BaseService {
     }
 
     public List<OrganizationMember> getOrganizationMembers(String orgId) {
-        return organizationMemberRepository.findByOrganizationId(orgId);
+        List<OrganizationMember> members = organizationMemberRepository.findByOrganizationId(orgId);
+        for (OrganizationMember member : members) {
+            userRepository.findById(member.getUserId()).ifPresent(user -> {
+                member.setFullName(user.getFullName());
+                member.setEmail(user.getEmail());
+                member.setUsername(user.getUsername());
+            });
+        }
+        return members;
     }
 
     public List<Team> getOrganizationTeams(String orgId) {
@@ -339,15 +347,26 @@ public class OrganizationService extends BaseService {
         // Storage usage is recording usage plus metadata (e.g. 10MB default base for organization data)
         double storageUsageMb = recordingUsageMb + 10.0;
 
+        // Count active meetings (status = ACTIVE)
+        long activeMeetings = meetings.stream()
+                .filter(m -> m.getStatus() == com.meetrivo.model.MeetingStatus.ACTIVE)
+                .count();
+
+        long storageUsedBytes = (long)(storageUsageMb * 1024.0 * 1024.0);
+
         return OrganizationAnalyticsResponse.builder()
                 .totalMembers(totalMembers)
                 .activeMembers(activeMembers)
+                .onlineMembers(activeMembers) // approximate online with active accounts
                 .teamsCount(teamsCount)
                 .departmentsCount(departmentsCount)
                 .meetingsCount(meetingsCount)
+                .activeMeetings(activeMeetings)
                 .meetingHours(Math.round(meetingHours * 100.0) / 100.0)
                 .recordingUsageMb(Math.round(recordingUsageMb * 100.0) / 100.0)
                 .storageUsageMb(Math.round(storageUsageMb * 100.0) / 100.0)
+                .storageUsedBytes(storageUsedBytes)
+                .planType("Pro")
                 .build();
     }
 

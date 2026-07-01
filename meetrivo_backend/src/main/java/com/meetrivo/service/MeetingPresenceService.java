@@ -26,9 +26,14 @@ public class MeetingPresenceService extends BaseService {
         Meeting meeting = meetingRepository.findByMeetingId(meetingId)
                 .orElseThrow(() -> new RuntimeException("Meeting not found: " + meetingId));
 
-        MeetingParticipant participant = meetingParticipantRepository
-                .findByMeetingIdAndUserId(meetingId, userId)
-                .orElseThrow(() -> new RuntimeException("Participant record not found"));
+        // Participant record may not exist yet if WebSocket join fires before REST join completes — skip gracefully
+        java.util.Optional<MeetingParticipant> participantOpt = meetingParticipantRepository
+                .findByMeetingIdAndUserId(meetingId, userId);
+        if (participantOpt.isEmpty()) {
+            logInfo("Participant record not yet persisted for userId: " + userId + " in meeting: " + meetingId + " — skipping presence broadcast");
+            return;
+        }
+        MeetingParticipant participant = participantOpt.get();
 
         participant.setOnlineStatus("ONLINE");
         participant.setActive(true);
@@ -69,7 +74,8 @@ public class MeetingPresenceService extends BaseService {
             participant.setMuted(isMuted);
             meetingParticipantRepository.save(participant);
 
-            MeetingEventType eventType = isMuted ? MeetingEventType.PARTICIPANT_MUTED : MeetingEventType.PARTICIPANT_UNMUTED;
+            // Use MIC_ON/MIC_OFF to match frontend useWebSocket.ts event handler
+            MeetingEventType eventType = isMuted ? MeetingEventType.MIC_OFF : MeetingEventType.MIC_ON;
             broadcastEvent(meetingId, eventType, userId, participant.getUsername(), createPayload(meetingId, participant));
         });
     }
@@ -79,8 +85,9 @@ public class MeetingPresenceService extends BaseService {
             participant.setCameraEnabled(isCameraEnabled);
             meetingParticipantRepository.save(participant);
 
-            // Using payload for state details; send custom event or payload
-            broadcastEvent(meetingId, MeetingEventType.USER_JOINED, userId, participant.getUsername(), createPayload(meetingId, participant));
+            // Use VIDEO_ON/VIDEO_OFF to match frontend useWebSocket.ts event handler
+            MeetingEventType eventType = isCameraEnabled ? MeetingEventType.VIDEO_ON : MeetingEventType.VIDEO_OFF;
+            broadcastEvent(meetingId, eventType, userId, participant.getUsername(), createPayload(meetingId, participant));
         });
     }
 
@@ -129,6 +136,28 @@ public class MeetingPresenceService extends BaseService {
         logInfo("Meeting ended real-time broadcast sent for: " + meetingId);
     }
 
+    public void handleUserWaiting(String meetingId, String userId) {
+        MeetingParticipant participant = meetingParticipantRepository
+                .findByMeetingIdAndUserId(meetingId, userId)
+                .orElseThrow(() -> new RuntimeException("Participant record not found"));
+
+        broadcastEvent(meetingId, MeetingEventType.WAITING_ROOM_JOIN, userId, participant.getUsername(), createPayload(meetingId, participant));
+    }
+
+    public void handleUserWaitingLeave(String meetingId, String userId, String username) {
+        MeetingEvent event = MeetingEvent.builder()
+                .eventType(MeetingEventType.WAITING_ROOM_LEAVE)
+                .meetingId(meetingId)
+                .userId(userId)
+                .username(username)
+                .timestamp(LocalDateTime.now())
+                .payload(Map.of("userId", userId, "username", username))
+                .build();
+
+        messagingTemplate.convertAndSend("/topic/participants/" + meetingId, event);
+        logInfo("Broadcasted WAITING_ROOM_LEAVE for user: " + username + " in meeting: " + meetingId);
+    }
+
     private void updateAndBroadcastParticipantCount(String meetingId) {
         long activeCount = meetingParticipantRepository.countByMeetingIdAndIsActiveTrue(meetingId);
         meetingRepository.findByMeetingId(meetingId).ifPresent(meeting -> {
@@ -157,7 +186,23 @@ public class MeetingPresenceService extends BaseService {
                 .payload(payload)
                 .build();
 
-        messagingTemplate.convertAndSend("/topic/participants/" + meetingId, event);
+        // Media state events go to /topic/meeting/ (handled by frontend useWebSocket media event handler)
+        // Participant list events go to /topic/participants/ (handled by participant list handler)
+        switch (eventType) {
+            case MIC_ON, MIC_OFF, VIDEO_ON, VIDEO_OFF, HAND_RAISED, HAND_LOWERED, CONNECTION_STATE_CHANGED:
+                messagingTemplate.convertAndSend("/topic/meeting/" + meetingId, event);
+                break;
+            default:
+                messagingTemplate.convertAndSend("/topic/participants/" + meetingId, event);
+                // Also broadcast USER_JOINED/LEFT to /topic/meeting/ so room.tsx gets the event
+                if (eventType == MeetingEventType.USER_JOINED || eventType == MeetingEventType.HOST_JOINED
+                        || eventType == MeetingEventType.USER_LEFT || eventType == MeetingEventType.HOST_LEFT
+                        || eventType == MeetingEventType.MEETING_STARTED || eventType == MeetingEventType.MEETING_ENDED) {
+                    messagingTemplate.convertAndSend("/topic/meeting/" + meetingId, event);
+                }
+                break;
+        }
         logInfo("Broadcasted event: " + eventType + " for user: " + username + " in meeting: " + meetingId);
     }
 }
+

@@ -18,7 +18,7 @@ import {
   FiShield,
 } from "react-icons/fi";
 import { Logo } from "@/components/shared/Logo";
-import { auth } from "@/lib/apiClient";
+import { auth, BACKEND_BASE_URL } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +27,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [initials, setInitials] = useState("ME");
   const [displayName, setDisplayName] = useState("User");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState("MEMBER");
+  const [profilePic, setProfilePic] = useState("");
 
   useEffect(() => {
     // Auth guard: redirect to login if not authenticated
@@ -41,7 +42,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         const u = JSON.parse(stored);
         const name = u.fullName || u.username || u.email || "User";
         setDisplayName(name);
-        setIsAdmin(u.role === "ADMIN" || u.role === "SUPER_ADMIN");
+        setUserRole(u.role || "MEMBER");
+        setProfilePic(u.profilePicture || "");
         const parts = name.split(" ");
         setInitials(parts.map((p: string) => p[0]).join("").toUpperCase().substring(0, 2));
       } catch (e) {}
@@ -53,20 +55,46 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate({ to: "/login" });
   };
 
-  const nav = [
-    { label: "Dashboard", to: "/dashboard", icon: FiHome },
-    { label: "Workspaces", to: "/organizations", icon: FiLayers },
-    { label: "Whiteboard", to: "/whiteboard", icon: FiEdit3 },
-    { label: "Files", to: "/files", icon: FiFolder },
-    { label: "History", to: "/history", icon: FiClock },
-    { label: "Billing", to: "/billing", icon: FiCreditCard },
-    { label: "Support", to: "/support", icon: FiHelpCircle },
-    { label: "Feedback", to: "/feedback", icon: FiMessageSquare },
-    { label: "Alerts", to: "/notifications", icon: FiBell },
-    { label: "Profile", to: "/profile", icon: FiUser },
-    { label: "Settings", to: "/settings", icon: FiSettings },
-    ...(isAdmin ? [{ label: "Admin Panel", to: "/admin", icon: FiShield }] : []),
-  ];
+  const getNavItems = () => {
+    if (userRole === "SUPER_ADMIN") {
+      return [
+        { label: "Admin Panel", to: "/admin", icon: FiShield },
+        { label: "Organizations", to: "/organizations", icon: FiLayers },
+        { label: "Billing", to: "/billing", icon: FiCreditCard },
+        { label: "Profile", to: "/profile", icon: FiUser },
+        { label: "Settings", to: "/settings", icon: FiSettings },
+      ];
+    }
+    if (userRole === "ORGANIZATION_OWNER" || userRole === "ORGANIZATION_ADMIN") {
+      return [
+        { label: "Meetings", to: "/dashboard", icon: FiHome },
+        { label: "Workspaces", to: "/organizations", icon: FiLayers },
+        { label: "Billing", to: "/billing", icon: FiCreditCard },
+        { label: "Profile", to: "/profile", icon: FiUser },
+        { label: "Settings", to: "/settings", icon: FiSettings },
+      ];
+    }
+    if (userRole === "TEAM_MANAGER") {
+      return [
+        { label: "Meetings", to: "/dashboard", icon: FiHome },
+        { label: "Teams", to: "/organizations", icon: FiLayers },
+        { label: "Profile", to: "/profile", icon: FiUser },
+        { label: "Settings", to: "/settings", icon: FiSettings },
+      ];
+    }
+    // Default MEMBER
+    return [
+      { label: "Meetings", to: "/dashboard", icon: FiHome },
+      { label: "Whiteboard", to: "/whiteboard", icon: FiEdit3 },
+      { label: "Files", to: "/files", icon: FiFolder },
+      { label: "History", to: "/history", icon: FiClock },
+      { label: "Alerts", to: "/notifications", icon: FiBell },
+      { label: "Profile", to: "/profile", icon: FiUser },
+      { label: "Settings", to: "/settings", icon: FiSettings },
+    ];
+  };
+
+  const nav = getNavItems();
 
   const mobileNav = [
     { label: "Home", to: "/dashboard", icon: FiHome },
@@ -114,9 +142,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           </Button>
           <div className="mt-2 flex items-center gap-2 rounded-xl border border-border/50 bg-background/50 px-3 py-2">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-primary text-xs font-semibold text-primary-foreground">
-              {initials}
-            </span>
+            {profilePic ? (
+              <img
+                src={profilePic.startsWith("http") ? profilePic : `${BACKEND_BASE_URL}${profilePic}`}
+                alt={displayName}
+                className="h-7 w-7 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gradient-primary text-xs font-semibold text-primary-foreground">
+                {initials}
+              </span>
+            )}
             <span className="min-w-0 flex-1 truncate text-xs font-medium">{displayName}</span>
             <button
               onClick={handleLogout}
@@ -134,9 +170,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Mobile top bar */}
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-md md:hidden">
           <Logo />
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-primary text-sm font-semibold text-primary-foreground">
-            {initials}
-          </span>
+          {profilePic ? (
+            <img
+              src={profilePic.startsWith("http") ? profilePic : `${BACKEND_BASE_URL}${profilePic}`}
+              alt={displayName}
+              className="h-9 w-9 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-primary text-sm font-semibold text-primary-foreground">
+              {initials}
+            </span>
+          )}
         </header>
 
         <main className="flex-1 px-4 pb-28 pt-6 sm:px-6 md:pb-10 md:pt-8">

@@ -41,6 +41,7 @@ import { QrCode } from "@/components/shared/QrCode";
 import { cn } from "@/lib/utils";
 import { useWebSocket, type WsMessage, type WsParticipant } from "@/hooks/useWebSocket";
 import { meetings as meetingsApi, files as filesApi, ai as aiApi, breakoutRooms as breakoutRoomsApi, recordings as recordingsApi } from "@/lib/apiClient";
+import { FiUserCheck, FiUserX, FiUserMinus } from "react-icons/fi";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/room")({
@@ -78,11 +79,12 @@ function RoomPage() {
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
 
-  // WebSocket signaling
   const {
     connected,
     messages,
     participants,
+    waitingParticipants,
+    setWaitingParticipants,
     sendMessage,
     sendReaction: wsSendReaction,
     sendHand,
@@ -95,6 +97,8 @@ function RoomPage() {
       await handleWebRTCSignal(signal);
     }
   );
+
+  const waitingCount = waitingParticipants?.length || 0;
 
   useEffect(() => {
     if (meetingCode) {
@@ -383,12 +387,39 @@ function RoomPage() {
             <RoomDrawer
               kind={drawer}
               people={activePeople}
+              waitingParticipants={waitingParticipants}
               messages={messages}
               onSendMessage={sendMessage}
               onClose={() => setDrawer(null)}
               meetingInfo={meeting}
               meetingCode={meetingCode}
               meetingLink={ROOM_LINK}
+              onAdmit={async (userId: string) => {
+                const mId = meeting?.meetingId || meeting?.id;
+                if (!mId) return;
+                try {
+                  await meetingsApi.approveParticipant(mId, userId);
+                  setWaitingParticipants(prev => prev.filter(p => p.id !== userId));
+                  toast.success('Participant admitted');
+                } catch (e: any) { toast.error(e.message || 'Failed to admit'); }
+              }}
+              onReject={async (userId: string) => {
+                const mId = meeting?.meetingId || meeting?.id;
+                if (!mId) return;
+                try {
+                  await meetingsApi.rejectParticipant(mId, userId);
+                  setWaitingParticipants(prev => prev.filter(p => p.id !== userId));
+                  toast.success('Participant rejected');
+                } catch (e: any) { toast.error(e.message || 'Failed to reject'); }
+              }}
+              onRemove={async (userId: string) => {
+                const mId = meeting?.meetingId || meeting?.id;
+                if (!mId) return;
+                try {
+                  await meetingsApi.removeParticipant(mId, userId);
+                  toast.success('Participant removed');
+                } catch (e: any) { toast.error(e.message || 'Failed to remove'); }
+              }}
             />
           )}
         </AnimatePresence>
@@ -403,6 +434,7 @@ function RoomPage() {
         drawer={drawer}
         showReactions={showReactions}
         isRecording={isRecording}
+        waitingCount={waitingParticipants.length}
         onMic={() => setMicOn((v) => !v)}
         onCam={() => setCamOn((v) => !v)}
         onShare={toggleSharing}
@@ -579,6 +611,7 @@ function ControlDock({
   drawer,
   showReactions,
   isRecording,
+  waitingCount,
   onMic,
   onCam,
   onShare,
@@ -596,6 +629,7 @@ function ControlDock({
   drawer: DrawerKind;
   showReactions: boolean;
   isRecording: boolean;
+  waitingCount: number;
   onMic: () => void;
   onCam: () => void;
   onShare: () => void;
@@ -648,6 +682,11 @@ function ControlDock({
         <span className="mx-0.5 h-7 w-px bg-border" />
         <DockBtn label="Participants" active={drawer === "participants"} onClick={() => onDrawer("participants")}>
           <FiUsers />
+          {waitingCount > 0 && (
+            <span className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-warning text-[9px] font-bold text-warning-foreground flex items-center justify-center px-0.5">
+              {waitingCount}
+            </span>
+          )}
         </DockBtn>
         <DockBtn label="Chat" active={drawer === "chat"} onClick={() => onDrawer("chat")}>
           <FiMessageSquare />
@@ -716,25 +755,33 @@ function DockBtn({
 function RoomDrawer({
   kind,
   people,
+  waitingParticipants,
   messages,
   onSendMessage,
   onClose,
   meetingInfo,
   meetingCode,
   meetingLink,
+  onAdmit,
+  onReject,
+  onRemove,
 }: {
   kind: Exclude<DrawerKind, null>;
   people: Participant[];
+  waitingParticipants: WsParticipant[];
   messages: WsMessage[];
   onSendMessage: (text: string) => void;
   onClose: () => void;
   meetingInfo: any;
   meetingCode: string;
   meetingLink: string;
+  onAdmit: (userId: string) => void;
+  onReject: (userId: string) => void;
+  onRemove: (userId: string) => void;
 }) {
   const titles: Record<string, string> = {
     chat: "Chat",
-    participants: `Participants (${people.length})`,
+    participants: `Participants (${people.length})${waitingParticipants.length > 0 ? ` · ${waitingParticipants.length} waiting` : ""}`,
     files: "Shared files",
     info: "Meeting info",
     ai: "AI Assistant",
@@ -764,7 +811,7 @@ function RoomDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {kind === "chat" && <ChatPanel messages={messages} onSend={onSendMessage} />}
-          {kind === "participants" && <ParticipantsPanel people={people} />}
+          {kind === "participants" && <ParticipantsPanel people={people} waitingParticipants={waitingParticipants} onAdmit={onAdmit} onReject={onReject} onRemove={onRemove} />}
           {kind === "files" && <FilesPanel />}
           {kind === "info" && <InfoPanel meeting={meetingInfo} meetingCode={meetingCode} meetingLink={meetingLink} />}
           {kind === "ai" && <AiPanel meetingId={meetingInfo?.id || meetingInfo?.meetingId || meetingCode} />}
@@ -841,11 +888,65 @@ function ChatPanel({ messages, onSend }: { messages: WsMessage[]; onSend: (text:
   );
 }
 
-function ParticipantsPanel({ people }: { people: Participant[] }) {
+function ParticipantsPanel({
+  people,
+  waitingParticipants,
+  onAdmit,
+  onReject,
+  onRemove,
+}: {
+  people: Participant[];
+  waitingParticipants: WsParticipant[];
+  onAdmit: (userId: string) => void;
+  onReject: (userId: string) => void;
+  onRemove: (userId: string) => void;
+}) {
   return (
     <div className="space-y-1 overflow-y-auto p-3">
+      {/* Waiting Room Section */}
+      {waitingParticipants.length > 0 && (
+        <div className="mb-4">
+          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-warning">
+            Waiting Room ({waitingParticipants.length})
+          </p>
+          {waitingParticipants.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-warning/20 bg-warning/5 px-2 py-2 mb-1">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-warning/20 text-xs font-semibold text-warning">
+                {p.initials}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{p.name}</p>
+                <p className="text-[10px] text-warning">Waiting to join</p>
+              </div>
+              <span className="flex items-center gap-1">
+                <button
+                  onClick={() => onAdmit(p.id)}
+                  title="Admit"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success hover:bg-success/20 transition-colors"
+                >
+                  <FiUserCheck className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => onReject(p.id)}
+                  title="Reject"
+                  className="grid h-7 w-7 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                >
+                  <FiUserX className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </div>
+          ))}
+          <hr className="my-3 border-border" />
+        </div>
+      )}
+      {/* Active Participants */}
+      {people.length > 0 && (
+        <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          In Meeting ({people.length})
+        </p>
+      )}
       {people.map((p) => (
-        <div key={p.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface/60">
+        <div key={p.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface/60 group">
           <span className="grid h-9 w-9 place-items-center rounded-full bg-gradient-primary text-xs font-semibold text-primary-foreground">
             {p.initials}
           </span>
@@ -859,6 +960,15 @@ function ParticipantsPanel({ people }: { people: Participant[] }) {
             {p.handRaised && <TbHandStop className="h-4 w-4 text-warning" />}
             {p.micOn ? <FiMic className="h-4 w-4" /> : <FiMicOff className="h-4 w-4 text-destructive" />}
             {p.cameraOn ? <FiVideo className="h-4 w-4" /> : <FiVideoOff className="h-4 w-4 text-destructive" />}
+            {!p.isYou && (
+              <button
+                onClick={() => onRemove(p.id)}
+                title="Remove"
+                className="hidden group-hover:grid h-6 w-6 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+              >
+                <FiUserMinus className="h-3 w-3" />
+              </button>
+            )}
           </span>
         </div>
       ))}

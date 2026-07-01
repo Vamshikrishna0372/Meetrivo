@@ -192,6 +192,20 @@ public class MeetingService extends BaseService {
 
         Meeting saved = meetingRepository.save(meeting);
         analyticsService.trackEvent(AnalyticsEventType.MEETING_ENDED, host.getId(), meetingId, null);
+
+        // Close any associated whiteboard session
+        try {
+            org.springframework.data.mongodb.core.query.Query queryWb = new org.springframework.data.mongodb.core.query.Query(
+                org.springframework.data.mongodb.core.query.Criteria.where("meetingId").is(meetingId)
+            );
+            org.springframework.data.mongodb.core.query.Update updateWb = new org.springframework.data.mongodb.core.query.Update()
+                .set("status", "CLOSED")
+                .set("closedAt", LocalDateTime.now());
+            mongoTemplate.updateFirst(queryWb, updateWb, "whiteboard_sessions");
+        } catch (Exception e) {
+            logError("Failed to close whiteboard session on meeting end", e);
+        }
+
         try {
             presenceService.handleMeetingEnded(meetingId);
         } catch (Exception e) {
@@ -286,6 +300,11 @@ public class MeetingService extends BaseService {
                 .findByMeetingIdAndUserId(meetingId, userId)
                 .orElseThrow(() -> new RuntimeException("Participant not found"));
         meetingParticipantRepository.delete(participant);
+        try {
+            presenceService.handleUserWaitingLeave(meetingId, userId, participant.getUsername());
+        } catch (Exception e) {
+            logError("Failed to broadcast real-time user rejected waiting room event", e);
+        }
         logInfo("Participant rejected and deleted: " + userId + " from meeting: " + meetingId);
     }
 
@@ -342,6 +361,11 @@ public class MeetingService extends BaseService {
                 .orElseThrow(() -> new RuntimeException("Participant not found"));
         participant.setRole(role);
         meetingParticipantRepository.save(participant);
+        try {
+            presenceService.handleUserJoined(meetingId, userId);
+        } catch (Exception e) {
+            logError("Failed to broadcast real-time user role change event", e);
+        }
         logInfo("Participant role updated to " + role + " for user: " + userId + " in meeting: " + meetingId);
     }
 

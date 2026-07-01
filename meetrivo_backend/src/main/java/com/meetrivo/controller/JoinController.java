@@ -48,6 +48,20 @@ public class JoinController {
         return ApiResponse.success(response, "Meeting participants retrieved successfully");
     }
 
+    @GetMapping("/{meetingId}/waiting-room")
+    @Operation(summary = "Get Waiting Room Participants", description = "Retrieves all participants currently in the waiting room")
+    public ApiResponse<List<ParticipantResponse>> getWaitingRoomParticipants(@PathVariable String meetingId) {
+        List<MeetingParticipant> participants = meetingParticipantRepository.findByMeetingId(meetingId);
+        List<ParticipantResponse> response = participants.stream()
+                .filter(p -> !p.isApproved() && !p.isBanned())
+                .map(this::mapToParticipantResponse)
+                .collect(Collectors.toList());
+        return ApiResponse.success(response, "Waiting room participants retrieved successfully");
+    }
+
+
+
+
     private ParticipantResponse mapToParticipantResponse(MeetingParticipant participant) {
         return ParticipantResponse.builder()
                 .id(participant.getId())

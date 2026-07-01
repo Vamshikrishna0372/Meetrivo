@@ -10,5 +10,15 @@ public enum MeetingEventType {
     PARTICIPANT_MUTED,
     PARTICIPANT_UNMUTED,
     SCREEN_SHARE_STARTED,
-    SCREEN_SHARE_STOPPED
+    SCREEN_SHARE_STOPPED,
+    WAITING_ROOM_JOIN,
+    WAITING_ROOM_LEAVE,
+    // Media state events — align with frontend useWebSocket.ts handler
+    MIC_ON,
+    MIC_OFF,
+    VIDEO_ON,
+    VIDEO_OFF,
+    HAND_RAISED,
+    HAND_LOWERED,
+    CONNECTION_STATE_CHANGED
 }

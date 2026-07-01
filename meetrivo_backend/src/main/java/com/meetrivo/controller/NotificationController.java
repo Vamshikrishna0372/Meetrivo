@@ -44,4 +44,22 @@ public class NotificationController {
         notificationService.markAllAsRead();
         return ApiResponse.success("All notifications marked as read", "Success");
     }
+
+    // ─── Delete Notification ──────────────────────────────────────────────────
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "Delete Notification", description = "Permanently deletes a notification by ID. Only the owning user can delete their notifications.")
+    public ApiResponse<String> deleteNotification(@PathVariable String id) {
+        notificationService.deleteNotification(id);
+        return ApiResponse.success("Notification deleted successfully", "Notification deleted");
+    }
+
+    // ─── Get Unread Count ─────────────────────────────────────────────────────
+
+    @GetMapping("/unread-count")
+    @Operation(summary = "Unread Notification Count", description = "Returns the count of unread notifications for the authenticated user.")
+    public ApiResponse<Long> getUnreadCount() {
+        long count = notificationService.getUnreadCount();
+        return ApiResponse.success(count, "Unread count retrieved successfully");
+    }
 }

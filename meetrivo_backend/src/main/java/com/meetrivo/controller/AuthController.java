@@ -58,7 +58,7 @@ public class AuthController {
 
     @GetMapping("/oauth2/callback/{provider}")
     @Operation(summary = "OAuth2 Provider Callback Endpoint", description = "Receives authorization code, exchanges it for provider user details and completes sign in")
-    public ApiResponse<AuthResponse> oauth2Callback(@PathVariable String provider, @RequestParam String code) {
+    public org.springframework.web.servlet.view.RedirectView oauth2Callback(@PathVariable String provider, @RequestParam String code) {
         com.meetrivo.model.AuthProvider authProvider;
         String email = "";
         String name = "";
@@ -88,7 +88,18 @@ public class AuthController {
                 .profilePicture("")
                 .build();
 
-        return ApiResponse.success(authService.loginOrRegisterOAuth2(loginReq), "OAuth2 callback authentication successful");
+        try {
+            AuthResponse authResponse = authService.loginOrRegisterOAuth2(loginReq);
+            String userJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(authResponse.getUser());
+            String redirectUrl = "http://localhost:5173/login?token=" + authResponse.getToken() + "&user=" + java.net.URLEncoder.encode(userJson, "UTF-8");
+            return new org.springframework.web.servlet.view.RedirectView(redirectUrl);
+        } catch (Exception e) {
+            try {
+                return new org.springframework.web.servlet.view.RedirectView("http://localhost:5173/login?error=" + java.net.URLEncoder.encode(e.getMessage(), "UTF-8"));
+            } catch (Exception ex) {
+                return new org.springframework.web.servlet.view.RedirectView("http://localhost:5173/login?error=OAuth2%20failed");
+            }
+        }
     }
 
     @GetMapping("/verify")

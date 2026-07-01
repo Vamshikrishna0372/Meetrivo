@@ -1,7 +1,10 @@
 package com.meetrivo.model;
 
 public enum Role {
-    USER,
-    ADMIN,
-    SUPER_ADMIN
+    SUPER_ADMIN,
+    ORGANIZATION_OWNER,
+    ORGANIZATION_ADMIN,
+    TEAM_MANAGER,
+    MEMBER,
+    GUEST
 }

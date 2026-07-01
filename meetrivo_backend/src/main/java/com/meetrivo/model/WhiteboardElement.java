@@ -49,6 +49,10 @@ public class WhiteboardElement {
     // Path data (for PEN, MARKER, LINE, ARROW — list of {x,y} points)
     private List<Map<String, Double>> points;
 
+    // Direct mapping to frontend Stroke fields
+    private String tool;
+    private double size;
+
     // Rotation in degrees
     private double rotation;
 

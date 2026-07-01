@@ -11,6 +11,8 @@ import {
   FiPlusCircle,
   FiCheck,
   FiUserPlus,
+  FiEdit,
+  FiShield,
 } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Button } from "@/components/ui/button";
@@ -46,13 +48,42 @@ function OrganizationsPage() {
 
   const [showDeptModal, setShowDeptModal] = useState(false);
   const [deptName, setDeptName] = useState("");
-  const [deptCode, setDeptCode] = useState("");
+  const [deptDesc, setDeptDesc] = useState("");
 
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("MEMBER");
 
+  // Teams management states
+  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [showEditTeamModal, setShowEditTeamModal] = useState(false);
+  const [editTeamName, setEditTeamName] = useState("");
+  const [editTeamDesc, setEditTeamDesc] = useState("");
+  const [showManageTeamModal, setShowManageTeamModal] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [addTeamMemberUserId, setAddTeamMemberUserId] = useState("");
+
+  // Department management states
+  const [selectedDept, setSelectedDept] = useState<any>(null);
+  const [showEditDeptModal, setShowEditDeptModal] = useState(false);
+  const [editDeptName, setEditDeptName] = useState("");
+  const [editDeptDesc, setEditDeptDesc] = useState("");
+  const [showManageDeptModal, setShowManageDeptModal] = useState(false);
+  const [deptHeadId, setDeptHeadId] = useState("");
+  const [deptMemberIds, setDeptMemberIds] = useState<string[]>([]);
+
   useEffect(() => {
+    const stored = localStorage.getItem("meetrivo_user");
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        if (u.role === "MEMBER" || u.role === "GUEST") {
+          toast.error("Access Denied: You do not have permission to manage organizations");
+          window.location.href = "/dashboard";
+          return;
+        }
+      } catch (e) {}
+    }
     loadOrganizations();
   }, []);
 
@@ -137,12 +168,12 @@ function OrganizationsPage() {
     try {
       await deptsApi.create({
         name: deptName,
-        code: deptCode,
+        description: deptDesc,
         organizationId: selectedOrg.id,
       });
       toast.success("Department created!");
       setDeptName("");
-      setDeptCode("");
+      setDeptDesc("");
       setShowDeptModal(false);
       loadTabData(selectedOrg.id, "departments");
     } catch (e: any) {
@@ -195,6 +226,131 @@ function OrganizationsPage() {
       loadTabData(selectedOrg.id, "departments");
     } catch (e: any) {
       toast.error(e.message || "Failed to delete department");
+    }
+  };
+
+  // Teams Edit & Manage Handlers
+  const openEditTeam = (team: any) => {
+    setSelectedTeam(team);
+    setEditTeamName(team.name || "");
+    setEditTeamDesc(team.description || "");
+    setShowEditTeamModal(true);
+  };
+
+  const handleUpdateTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTeamName.trim() || !selectedTeam) return;
+    try {
+      await teamsApi.update(selectedTeam.id, {
+        name: editTeamName,
+        description: editTeamDesc,
+        organizationId: selectedOrg.id,
+        managerId: selectedTeam.managerId,
+      });
+      toast.success("Team updated successfully!");
+      setShowEditTeamModal(false);
+      loadTabData(selectedOrg.id, "teams");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update team");
+    }
+  };
+
+  const openManageTeam = async (team: any) => {
+    setSelectedTeam(team);
+    setShowManageTeamModal(true);
+    loadTeamMembers(team.id);
+  };
+
+  const loadTeamMembers = async (teamId: string) => {
+    try {
+      const list = await teamsApi.getMembers(teamId);
+      setTeamMembers(list || []);
+    } catch (e: any) {
+      console.warn("Failed to load team members:", e.message);
+    }
+  };
+
+  const handleAddTeamMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addTeamMemberUserId || !selectedTeam) return;
+    try {
+      await teamsApi.addMember(selectedTeam.id, addTeamMemberUserId);
+      toast.success("Member added to team!");
+      setAddTeamMemberUserId("");
+      loadTeamMembers(selectedTeam.id);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add member to team");
+    }
+  };
+
+  const handleRemoveTeamMember = async (userId: string) => {
+    if (!selectedTeam) return;
+    try {
+      await teamsApi.removeMember(selectedTeam.id, userId);
+      toast.success("Member removed from team!");
+      loadTeamMembers(selectedTeam.id);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to remove member");
+    }
+  };
+
+  const handleTransferManager = async (newManagerId: string) => {
+    if (!selectedTeam) return;
+    try {
+      await teamsApi.transferManager(selectedTeam.id, newManagerId);
+      toast.success("Manager role transferred!");
+      setSelectedTeam((t: any) => ({ ...t, managerId: newManagerId }));
+      loadTeamMembers(selectedTeam.id);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to transfer manager");
+    }
+  };
+
+  // Departments Edit & Manage Handlers
+  const openEditDept = (dept: any) => {
+    setSelectedDept(dept);
+    setEditDeptName(dept.name || "");
+    setEditDeptDesc(dept.description || "");
+    setShowEditDeptModal(true);
+  };
+
+  const handleUpdateDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDeptName.trim() || !selectedDept) return;
+    try {
+      await deptsApi.update(selectedDept.id, {
+        name: editDeptName,
+        description: editDeptDesc,
+        organizationId: selectedOrg.id,
+        headId: selectedDept.headId,
+      });
+      toast.success("Department updated!");
+      setShowEditDeptModal(false);
+      loadTabData(selectedOrg.id, "departments");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update department");
+    }
+  };
+
+  const openManageDept = (dept: any) => {
+    setSelectedDept(dept);
+    setDeptHeadId(dept.headId || "");
+    setDeptMemberIds(dept.memberIds || []);
+    setShowManageDeptModal(true);
+  };
+
+  const handleSaveDeptMembers = async () => {
+    if (!selectedDept) return;
+    try {
+      if (deptHeadId !== selectedDept.headId && deptHeadId) {
+        await deptsApi.assignHead(selectedDept.id, deptHeadId);
+      }
+      await deptsApi.assignMembers(selectedDept.id, deptMemberIds);
+      toast.success("Department details updated!");
+      setShowManageDeptModal(false);
+      loadTabData(selectedOrg.id, "departments");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update department details");
     }
   };
 
@@ -316,17 +472,27 @@ function OrganizationsPage() {
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2">
                               {teams.map((t) => (
-                                <div key={t.id} className="rounded-xl border border-border bg-card p-4 flex justify-between items-start gap-4">
-                                  <div>
-                                    <h4 className="font-semibold text-sm">{t.name}</h4>
+                                <div key={t.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+                                  <div className="cursor-pointer flex-1" onClick={() => openManageTeam(t)}>
+                                    <h4 className="font-semibold text-sm hover:text-primary transition-colors">{t.name}</h4>
                                     <p className="text-xs text-muted-foreground mt-0.5">{t.description || "No description"}</p>
+                                    {t.managerId && (
+                                      <span className="mt-2 inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                        <FiShield className="h-3 w-3" /> Manager: {members.find(m => m.userId === t.managerId)?.fullName || t.managerId}
+                                      </span>
+                                    )}
                                   </div>
-                                  <button
-                                    onClick={() => handleDeleteTeam(t.id)}
-                                    className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive p-1.5 rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    <FiTrash2 className="h-4 w-4" />
-                                  </button>
+                                  <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
+                                    <Button size="sm" variant="glass" onClick={() => openEditTeam(t)}>
+                                      <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                                    </Button>
+                                    <button
+                                      onClick={() => handleDeleteTeam(t.id)}
+                                      className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center"
+                                    >
+                                      <FiTrash2 className="h-4 w-4 mr-1" /> Delete
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -349,17 +515,27 @@ function OrganizationsPage() {
                           ) : (
                             <div className="grid gap-3 sm:grid-cols-2">
                               {departments.map((d) => (
-                                <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex justify-between items-start gap-4">
-                                  <div>
-                                    <h4 className="font-semibold text-sm">{d.name}</h4>
-                                    <p className="text-xs text-muted-foreground mt-0.5">Code: <span className="font-semibold">{d.code || "N/A"}</span></p>
+                                <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+                                  <div className="cursor-pointer flex-1" onClick={() => openManageDept(d)}>
+                                    <h4 className="font-semibold text-sm hover:text-primary transition-colors">{d.name}</h4>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{d.description || "No description"}</p>
+                                    {d.headId && (
+                                      <span className="mt-2 inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                                        Head: {members.find(m => m.userId === d.headId)?.fullName || d.headId}
+                                      </span>
+                                    )}
                                   </div>
-                                  <button
-                                    onClick={() => handleDeleteDept(d.id)}
-                                    className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive p-1.5 rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    <FiTrash2 className="h-4 w-4" />
-                                  </button>
+                                  <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
+                                    <Button size="sm" variant="glass" onClick={() => openEditDept(d)}>
+                                      <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                                    </Button>
+                                    <button
+                                      onClick={() => handleDeleteDept(d.id)}
+                                      className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center"
+                                    >
+                                      <FiTrash2 className="h-4 w-4 mr-1" /> Delete
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -389,7 +565,8 @@ function OrganizationsPage() {
                                   {members.map((m) => (
                                     <tr key={m.id} className="hover:bg-surface/10">
                                       <td className="px-4 py-3">
-                                        <p className="font-semibold text-foreground">{m.userId}</p>
+                                        <p className="font-semibold text-foreground">{m.fullName || m.username || m.userId}</p>
+                                        {(m.fullName || m.username) && <p className="text-[10px] text-muted-foreground">{m.email || m.userId}</p>}
                                       </td>
                                       <td className="px-4 py-3">
                                         <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary uppercase">
@@ -468,6 +645,99 @@ function OrganizationsPage() {
         </div>
       )}
 
+      {/* Team Edit Modal */}
+      {showEditTeamModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-glow space-y-4">
+            <h3 className="text-sm font-semibold">Edit Team</h3>
+            <form onSubmit={handleUpdateTeam} className="space-y-4">
+              <Field label="Team Name" placeholder="e.g. Engineering Standup" value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} required />
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                <textarea
+                  value={editTeamDesc}
+                  onChange={(e) => setEditTeamDesc(e.target.value)}
+                  placeholder="Team description..."
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border bg-background/60 px-4 py-3 text-xs outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="ghost" onClick={() => setShowEditTeamModal(false)}>Cancel</Button>
+                <Button type="submit" variant="hero">Save Changes</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Team Members Management Modal */}
+      {showManageTeamModal && selectedTeam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-glow space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Manage Team: {selectedTeam.name}</h3>
+              <button onClick={() => setShowManageTeamModal(false)} className="text-muted-foreground hover:text-foreground">
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase">Team Members</h4>
+              <div className="max-h-40 overflow-y-auto divide-y divide-border/60 rounded-xl border border-border/80 p-2">
+                {teamMembers.length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-3 text-center">No members in this team yet.</p>
+                ) : (
+                  teamMembers.map((tm) => (
+                    <div key={tm.id} className="flex justify-between items-center py-2 text-xs">
+                      <div>
+                        <p className="font-semibold">{members.find(m => m.userId === tm.userId)?.fullName || tm.userId}</p>
+                        <p className="text-[10px] text-muted-foreground capitalize">{tm.role || "Member"}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {tm.userId !== selectedTeam.managerId && (
+                          <Button size="sm" variant="glass" className="h-7 text-[10px]" onClick={() => handleTransferManager(tm.userId)}>
+                            Make Manager
+                          </Button>
+                        )}
+                        <button
+                          onClick={() => handleRemoveTeamMember(tm.userId)}
+                          className="text-destructive hover:bg-destructive/10 p-1 rounded cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <form onSubmit={handleAddTeamMember} className="space-y-3 pt-2 border-t border-border/60">
+              <label className="text-xs font-semibold text-muted-foreground">Add Organization Member</label>
+              <div className="flex gap-2">
+                <select
+                  value={addTeamMemberUserId}
+                  onChange={(e) => setAddTeamMemberUserId(e.target.value)}
+                  className="flex-1 h-9 rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary cursor-pointer"
+                  required
+                >
+                  <option value="">Select a member...</option>
+                  {members
+                    .filter((m) => !teamMembers.some((tm) => tm.userId === m.userId))
+                    .map((m) => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.fullName || m.username || m.userId}
+                      </option>
+                    ))}
+                </select>
+                <Button type="submit" size="sm" variant="hero">Add</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Department Creation Modal */}
       {showDeptModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
@@ -475,12 +745,107 @@ function OrganizationsPage() {
             <h3 className="text-sm font-semibold">Add Department</h3>
             <form onSubmit={handleCreateDept} className="space-y-4">
               <Field label="Department Name" placeholder="e.g. Research & Development" value={deptName} onChange={(e) => setDeptName(e.target.value)} required />
-              <Field label="Department Code" placeholder="e.g. RD-202" value={deptCode} onChange={(e) => setDeptCode(e.target.value)} />
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                <textarea
+                  value={deptDesc}
+                  onChange={(e) => setDeptDesc(e.target.value)}
+                  placeholder="Department description..."
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border bg-background/60 px-4 py-3 text-xs outline-none focus:border-primary"
+                />
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="ghost" onClick={() => setShowDeptModal(false)}>Cancel</Button>
                 <Button type="submit" variant="hero">Create</Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Department Edit Modal */}
+      {showEditDeptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-glow space-y-4">
+            <h3 className="text-sm font-semibold">Edit Department</h3>
+            <form onSubmit={handleUpdateDept} className="space-y-4">
+              <Field label="Department Name" placeholder="e.g. Research & Development" value={editDeptName} onChange={(e) => setEditDeptName(e.target.value)} required />
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                <textarea
+                  value={editDeptDesc}
+                  onChange={(e) => setEditDeptDesc(e.target.value)}
+                  placeholder="Department description..."
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-border bg-background/60 px-4 py-3 text-xs outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="ghost" onClick={() => setShowEditDeptModal(false)}>Cancel</Button>
+                <Button type="submit" variant="hero">Save Changes</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Department Management Modal */}
+      {showManageDeptModal && selectedDept && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-glow space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Manage Department: {selectedDept.name}</h3>
+              <button onClick={() => setShowManageDeptModal(false)} className="text-muted-foreground hover:text-foreground">
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-muted-foreground">Department Head</label>
+              <select
+                value={deptHeadId}
+                onChange={(e) => setDeptHeadId(e.target.value)}
+                className="w-full h-9 rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-primary cursor-pointer"
+              >
+                <option value="">Select a head...</option>
+                {members.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.fullName || m.username || m.userId}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <label className="text-xs font-semibold text-muted-foreground">Department Members</label>
+              <div className="max-h-40 overflow-y-auto border border-border/85 rounded-xl p-2.5 bg-background/45 space-y-1.5">
+                {members.map((m) => {
+                  const isChecked = deptMemberIds.includes(m.userId);
+                  return (
+                    <label key={m.userId} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => {
+                          if (isChecked) {
+                            setDeptMemberIds(ids => ids.filter(id => id !== m.userId));
+                          } else {
+                            setDeptMemberIds(ids => [...ids, m.userId]);
+                          }
+                        }}
+                      />
+                      <span>{m.fullName || m.username || m.userId}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-border/60">
+              <Button variant="ghost" onClick={() => setShowManageDeptModal(false)}>Cancel</Button>
+              <Button variant="hero" onClick={handleSaveDeptMembers}>Save Details</Button>
+            </div>
           </div>
         </div>
       )}

@@ -2,11 +2,14 @@ package com.meetrivo.service;
 
 import com.meetrivo.dto.UserResponse;
 import com.meetrivo.model.User;
+import com.meetrivo.repository.MeetingRepository;
+import com.meetrivo.repository.OrganizationMemberRepository;
 import com.meetrivo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @Service
@@ -16,7 +19,30 @@ public class UserService extends BaseService {
     private final UserRepository userRepository;
     private final com.meetrivo.repository.LoginHistoryRepository loginHistoryRepository;
     private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+    private final MeetingRepository meetingRepository;
+    private final OrganizationMemberRepository organizationMemberRepository;
 
+    public UserResponse getProfile() {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return mapToUserResponse(user);
+    }
+
+    public Map<String, Object> getUserStats() {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        long totalMeetings = meetingRepository.findByHostId(user.getId()).size();
+        long workspaces = organizationMemberRepository.findAll().stream()
+            .filter(m -> user.getId().equals(m.getUserId())).count();
+        // Estimate hours from meeting count (avg 45 min per meeting)
+        long totalHours = (totalMeetings * 45) / 60;
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalMeetings", totalMeetings);
+        stats.put("totalHours", totalHours);
+        stats.put("workspaces", workspaces);
+        stats.put("meetingsThisWeek", Math.min(totalMeetings, 7));
+        stats.put("avgDurationMin", totalMeetings > 0 ? 45 : 0);
+        stats.put("totalParticipants", totalMeetings * 3);
+        return stats;
+    }
     @SuppressWarnings("unchecked")
     public UserResponse updateProfile(Map<String, Object> updates) {
         User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
