@@ -1,4 +1,4 @@
-import { v as FiVideo, am as FiCode, D as FiGrid, z as FiMessageSquare, ag as FiEdit3, an as FiSmartphone } from "../_libs/react-icons.mjs";
+import { v as FiVideo, ap as FiCode, D as FiGrid, z as FiMessageSquare, aj as FiEdit3, aq as FiSmartphone } from "../_libs/react-icons.mjs";
 const features = [
   {
     icon: FiVideo,
