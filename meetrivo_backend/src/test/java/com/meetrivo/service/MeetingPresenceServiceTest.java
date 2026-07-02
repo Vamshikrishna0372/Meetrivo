@@ -117,9 +117,9 @@ public class MeetingPresenceServiceTest {
         assertTrue(testParticipant.isMuted());
 
         ArgumentCaptor<MeetingEvent> eventCaptor = ArgumentCaptor.forClass(MeetingEvent.class);
-        verify(messagingTemplate).convertAndSend(eq("/topic/participants/meeting-123"), eventCaptor.capture());
+        verify(messagingTemplate).convertAndSend(eq("/topic/meeting/meeting-123"), eventCaptor.capture());
 
         MeetingEvent event = eventCaptor.getValue();
-        assertEquals(MeetingEventType.PARTICIPANT_MUTED, event.getEventType());
+        assertEquals(MeetingEventType.MIC_OFF, event.getEventType());
     }
 }

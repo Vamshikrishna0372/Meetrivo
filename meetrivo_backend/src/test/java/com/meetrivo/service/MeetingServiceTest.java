@@ -202,10 +202,16 @@ public class MeetingServiceTest {
                 .password("wrongpassword")
                 .build();
 
-        Exception exception = assertThrows(RuntimeException.class, () -> {
-            joinService.joinMeeting(wrongRequest);
-        });
+        try (MockedStatic<SecurityContextHolder> utilities = Mockito.mockStatic(SecurityContextHolder.class)) {
+            utilities.when(SecurityContextHolder::getContext).thenReturn(securityContext);
+            when(securityContext.getAuthentication()).thenReturn(authentication);
+            when(authentication.getPrincipal()).thenReturn(testUser);
 
-        assertEquals("Invalid meeting password", exception.getMessage());
+            Exception exception = assertThrows(RuntimeException.class, () -> {
+                joinService.joinMeeting(wrongRequest);
+            });
+
+            assertEquals("Invalid meeting password", exception.getMessage());
+        }
     }
 }
