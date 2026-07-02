@@ -37,6 +37,8 @@ public class MeetingResponse {
     private boolean chatEnabled;
     private boolean screenShareEnabled;
     private String joinLink;
+    private String qrToken;
+    private LocalDateTime qrExpiresAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

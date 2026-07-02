@@ -79,6 +79,10 @@ public class Meeting {
     // Shareable link
     private String joinLink;
 
+    // QR fields
+    private String qrToken;
+    private LocalDateTime qrExpiresAt;
+
     // Tenant and isolation fields
     private String organizationId;
     private String teamId;

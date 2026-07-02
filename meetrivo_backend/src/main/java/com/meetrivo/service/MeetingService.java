@@ -395,6 +395,27 @@ public class MeetingService extends BaseService {
         return code;
     }
 
+    public MeetingResponse generateQrToken(String meetingId) {
+        validateHostOrCoHostOrModerator(meetingId);
+        Meeting meeting = getMeetingEntity(meetingId);
+        meeting.setQrToken(UUID.randomUUID().toString());
+        meeting.setQrExpiresAt(LocalDateTime.now().plusHours(24));
+        Meeting saved = meetingRepository.save(meeting);
+        logInfo("Generated secure QR token for meeting: " + meetingId);
+        return mapToMeetingResponse(saved);
+    }
+
+    public MeetingResponse getQrToken(String meetingId) {
+        Meeting meeting = getMeetingEntity(meetingId);
+        if (meeting.getQrToken() == null || meeting.getQrExpiresAt() == null || meeting.getQrExpiresAt().isBefore(LocalDateTime.now())) {
+            // Auto generate if none exists or expired
+            meeting.setQrToken(UUID.randomUUID().toString());
+            meeting.setQrExpiresAt(LocalDateTime.now().plusHours(24));
+            meeting = meetingRepository.save(meeting);
+        }
+        return mapToMeetingResponse(meeting);
+    }
+
     private MeetingResponse mapToMeetingResponse(Meeting meeting) {
         return MeetingResponse.builder()
                 .id(meeting.getId())
@@ -420,6 +441,8 @@ public class MeetingService extends BaseService {
                 .chatEnabled(meeting.isChatEnabled())
                 .screenShareEnabled(meeting.isScreenShareEnabled())
                 .joinLink(meeting.getJoinLink())
+                .qrToken(meeting.getQrToken())
+                .qrExpiresAt(meeting.getQrExpiresAt())
                 .createdAt(meeting.getCreatedAt())
                 .updatedAt(meeting.getUpdatedAt())
                 .build();

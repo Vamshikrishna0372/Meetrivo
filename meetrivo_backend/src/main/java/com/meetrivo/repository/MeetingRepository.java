@@ -29,4 +29,6 @@ public interface MeetingRepository extends MongoRepository<Meeting, String> {
     boolean existsByMeetingCode(String meetingCode);
 
     List<Meeting> findByOrganizationId(String organizationId);
+
+    Optional<Meeting> findByQrToken(String qrToken);
 }

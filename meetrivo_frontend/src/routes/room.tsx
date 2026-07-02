@@ -394,6 +394,7 @@ function RoomPage() {
               meetingInfo={meeting}
               meetingCode={meetingCode}
               meetingLink={ROOM_LINK}
+              userRole={activePeople.find(p => p.isYou)?.role || "PARTICIPANT"}
               onAdmit={async (userId: string) => {
                 const mId = meeting?.meetingId || meeting?.id;
                 if (!mId) return;
@@ -419,6 +420,22 @@ function RoomPage() {
                   await meetingsApi.removeParticipant(mId, userId);
                   toast.success('Participant removed');
                 } catch (e: any) { toast.error(e.message || 'Failed to remove'); }
+              }}
+              onBan={async (userId: string) => {
+                const mId = meeting?.meetingId || meeting?.id;
+                if (!mId) return;
+                try {
+                  await meetingsApi.banParticipant(mId, userId);
+                  toast.success('Participant banned');
+                } catch (e: any) { toast.error(e.message || 'Failed to ban'); }
+              }}
+              onAssignRole={async (userId: string, role: string) => {
+                const mId = meeting?.meetingId || meeting?.id;
+                if (!mId) return;
+                try {
+                  await meetingsApi.assignRole(mId, userId, role);
+                  toast.success(`Role updated to ${role}`);
+                } catch (e: any) { toast.error(e.message || 'Failed to assign role'); }
               }}
             />
           )}
@@ -765,6 +782,9 @@ function RoomDrawer({
   onAdmit,
   onReject,
   onRemove,
+  onBan,
+  onAssignRole,
+  userRole,
 }: {
   kind: Exclude<DrawerKind, null>;
   people: Participant[];
@@ -778,6 +798,9 @@ function RoomDrawer({
   onAdmit: (userId: string) => void;
   onReject: (userId: string) => void;
   onRemove: (userId: string) => void;
+  onBan: (userId: string) => void;
+  onAssignRole: (userId: string, role: string) => void;
+  userRole: string;
 }) {
   const titles: Record<string, string> = {
     chat: "Chat",
@@ -811,7 +834,18 @@ function RoomDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {kind === "chat" && <ChatPanel messages={messages} onSend={onSendMessage} />}
-          {kind === "participants" && <ParticipantsPanel people={people} waitingParticipants={waitingParticipants} onAdmit={onAdmit} onReject={onReject} onRemove={onRemove} />}
+          {kind === "participants" && (
+            <ParticipantsPanel
+              people={people}
+              waitingParticipants={waitingParticipants}
+              onAdmit={onAdmit}
+              onReject={onReject}
+              onRemove={onRemove}
+              onBan={onBan}
+              onAssignRole={onAssignRole}
+              userRole={userRole}
+            />
+          )}
           {kind === "files" && <FilesPanel />}
           {kind === "info" && <InfoPanel meeting={meetingInfo} meetingCode={meetingCode} meetingLink={meetingLink} />}
           {kind === "ai" && <AiPanel meetingId={meetingInfo?.id || meetingInfo?.meetingId || meetingCode} />}
@@ -894,13 +928,24 @@ function ParticipantsPanel({
   onAdmit,
   onReject,
   onRemove,
+  onBan,
+  onAssignRole,
+  userRole,
 }: {
   people: Participant[];
   waitingParticipants: WsParticipant[];
   onAdmit: (userId: string) => void;
   onReject: (userId: string) => void;
   onRemove: (userId: string) => void;
+  onBan: (userId: string) => void;
+  onAssignRole: (userId: string, role: string) => void;
+  userRole: string;
 }) {
+  const isHostUser = userRole.toUpperCase() === "HOST";
+  const isCoHostUser = userRole.toUpperCase() === "CO_HOST";
+  const isModeratorUser = userRole.toUpperCase() === "MODERATOR";
+  const hasControlPrivileges = isHostUser || isCoHostUser || isModeratorUser;
+
   return (
     <div className="space-y-1 overflow-y-auto p-3">
       {/* Waiting Room Section */}
@@ -918,22 +963,24 @@ function ParticipantsPanel({
                 <p className="truncate text-sm font-medium">{p.name}</p>
                 <p className="text-[10px] text-warning">Waiting to join</p>
               </div>
-              <span className="flex items-center gap-1">
-                <button
-                  onClick={() => onAdmit(p.id)}
-                  title="Admit"
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success hover:bg-success/20 transition-colors"
-                >
-                  <FiUserCheck className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => onReject(p.id)}
-                  title="Reject"
-                  className="grid h-7 w-7 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                >
-                  <FiUserX className="h-3.5 w-3.5" />
-                </button>
-              </span>
+              {hasControlPrivileges && (
+                <span className="flex items-center gap-1">
+                  <button
+                    onClick={() => onAdmit(p.id)}
+                    title="Admit"
+                    className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success hover:bg-success/20 transition-colors"
+                  >
+                    <FiUserCheck className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onReject(p.id)}
+                    title="Reject"
+                    className="grid h-7 w-7 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                  >
+                    <FiUserX className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              )}
             </div>
           ))}
           <hr className="my-3 border-border" />
@@ -960,14 +1007,37 @@ function ParticipantsPanel({
             {p.handRaised && <TbHandStop className="h-4 w-4 text-warning" />}
             {p.micOn ? <FiMic className="h-4 w-4" /> : <FiMicOff className="h-4 w-4 text-destructive" />}
             {p.cameraOn ? <FiVideo className="h-4 w-4" /> : <FiVideoOff className="h-4 w-4 text-destructive" />}
-            {!p.isYou && (
-              <button
-                onClick={() => onRemove(p.id)}
-                title="Remove"
-                className="hidden group-hover:grid h-6 w-6 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+            
+            {isHostUser && !p.isYou && (
+              <select
+                value={(p.role || "PARTICIPANT").toUpperCase()}
+                onChange={(e) => onAssignRole(p.id, e.target.value)}
+                className="rounded border border-border bg-background text-[10px] text-muted-foreground outline-none px-1 py-0.5"
               >
-                <FiUserMinus className="h-3 w-3" />
-              </button>
+                <option value="HOST">Host</option>
+                <option value="CO_HOST">Co-Host</option>
+                <option value="MODERATOR">Moderator</option>
+                <option value="PARTICIPANT">Participant</option>
+              </select>
+            )}
+
+            {hasControlPrivileges && !p.isYou && (
+              <>
+                <button
+                  onClick={() => onRemove(p.id)}
+                  title="Remove Participant"
+                  className="hidden group-hover:grid h-6 w-6 place-items-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                >
+                  <FiUserMinus className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => onBan(p.id)}
+                  title="Ban Participant"
+                  className="hidden group-hover:grid h-6 w-6 place-items-center rounded-lg bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors"
+                >
+                  <FiUserX className="h-3 w-3" />
+                </button>
+              </>
             )}
           </span>
         </div>

@@ -33,17 +33,36 @@ public class JoinService extends BaseService {
                 .or(() -> meetingRepository.findByMeetingCode(identifier))
                 .orElseThrow(() -> new RuntimeException("Meeting not found with identifier: " + identifier));
 
-        if (meeting.getStatus() != MeetingStatus.ACTIVE) {
-            throw new RuntimeException("Cannot join meeting because it is not active. Status: " + meeting.getStatus());
+        User user = getCurrentUser();
+        // Host role if current user is the host
+        ParticipantRole role = meeting.getHostId().equals(user.getId()) ? ParticipantRole.HOST : ParticipantRole.PARTICIPANT;
+
+        if (meeting.getStatus() == MeetingStatus.ENDED) {
+            throw new RuntimeException("This meeting has already ended.");
+        }
+        if (meeting.getStatus() == MeetingStatus.CANCELLED) {
+            throw new RuntimeException("This meeting has been cancelled.");
+        }
+        if (meeting.getScheduledEndTime() != null && meeting.getScheduledEndTime().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("This meeting has expired.");
+        }
+        if (meeting.getStatus() == MeetingStatus.SCHEDULED && role != ParticipantRole.HOST) {
+            throw new RuntimeException("This meeting has not started yet.");
+        }
+        if (meeting.getStatus() == MeetingStatus.SCHEDULED && role == ParticipantRole.HOST) {
+            meeting.setStatus(MeetingStatus.ACTIVE);
+            meeting.setActualStartTime(LocalDateTime.now());
+            meetingRepository.save(meeting);
         }
 
         // Validate password if protected
         validateMeetingPassword(meeting, request.getPassword());
 
-        User user = getCurrentUser();
-
-        // Host role if current user is the host
-        ParticipantRole role = meeting.getHostId().equals(user.getId()) ? ParticipantRole.HOST : ParticipantRole.PARTICIPANT;
+        // Capacity check
+        int max = meeting.getMaxParticipants() > 0 ? meeting.getMaxParticipants() : 100;
+        if (meeting.getParticipantCount() >= max && role != ParticipantRole.HOST) {
+            throw new RuntimeException("Meeting is full. Max capacity is " + max + " participants.");
+        }
 
         // Check if meeting is locked
         if (meeting.isLocked() && role != ParticipantRole.HOST) {
@@ -192,6 +211,70 @@ public class JoinService extends BaseService {
 
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    }
+
+    public ParticipantResponse joinByQrToken(String token) {
+        Meeting meeting = meetingRepository.findByQrToken(token)
+                .orElseThrow(() -> new RuntimeException("Invalid QR code or meeting not found."));
+
+        if (meeting.getQrExpiresAt() == null || meeting.getQrExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("This QR code has expired.");
+        }
+
+        User user = getCurrentUser();
+        ParticipantRole role = meeting.getHostId().equals(user.getId()) ? ParticipantRole.HOST : ParticipantRole.PARTICIPANT;
+
+        if (meeting.getStatus() == MeetingStatus.ENDED) {
+            throw new RuntimeException("This meeting has already ended.");
+        }
+        if (meeting.getStatus() == MeetingStatus.CANCELLED) {
+            throw new RuntimeException("This meeting has been cancelled.");
+        }
+        if (meeting.getScheduledEndTime() != null && meeting.getScheduledEndTime().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("This meeting has expired.");
+        }
+        if (meeting.getStatus() == MeetingStatus.SCHEDULED && role != ParticipantRole.HOST) {
+            throw new RuntimeException("This meeting has not started yet.");
+        }
+        if (meeting.getStatus() == MeetingStatus.SCHEDULED && role == ParticipantRole.HOST) {
+            meeting.setStatus(MeetingStatus.ACTIVE);
+            meeting.setActualStartTime(LocalDateTime.now());
+            meetingRepository.save(meeting);
+        }
+
+        // Capacity check
+        int max = meeting.getMaxParticipants() > 0 ? meeting.getMaxParticipants() : 100;
+        if (meeting.getParticipantCount() >= max && role != ParticipantRole.HOST) {
+            throw new RuntimeException("Meeting is full. Max capacity is " + max + " participants.");
+        }
+
+        // Duplicate Join check
+        Optional<MeetingParticipant> existing = meetingParticipantRepository.findByMeetingIdAndUserId(meeting.getMeetingId(), user.getId());
+        if (existing.isPresent()) {
+            MeetingParticipant p = existing.get();
+            if (p.isBanned()) {
+                throw new RuntimeException("You have been banned from this meeting by the host.");
+            }
+            if (p.isActive() && p.isApproved() && role != ParticipantRole.HOST) {
+                throw new RuntimeException("Duplicate Join: You are already active in this meeting.");
+            }
+        }
+
+        // Add participant (QR join bypasses password protection)
+        MeetingParticipant participant = addParticipant(meeting, user, role);
+        try {
+            if (participant.isApproved()) {
+                presenceService.handleUserJoined(meeting.getMeetingId(), user.getId());
+            } else {
+                presenceService.handleUserWaiting(meeting.getMeetingId(), user.getId());
+            }
+        } catch (Exception e) {
+            logError("Failed to broadcast real-time user QR join event", e);
+        }
+        analyticsService.trackEvent(AnalyticsEventType.MEETING_JOINED, user.getId(), meeting.getMeetingId(), null);
+        logInfo("User: " + user.getUsername() + " joined via QR in meeting: " + meeting.getMeetingId() + " as role: " + role);
+
+        return mapToParticipantResponse(participant);
     }
 
     private ParticipantResponse mapToParticipantResponse(MeetingParticipant participant) {

@@ -62,6 +62,13 @@ public class JoinController {
 
 
 
+    @PostMapping("/qr/join")
+    @Operation(summary = "Join via QR Token", description = "Allows a user to join an active meeting room by scanned secure QR token.")
+    public ApiResponse<ParticipantResponse> joinByQrToken(@RequestParam String token) {
+        ParticipantResponse participant = joinService.joinByQrToken(token);
+        return ApiResponse.success(participant, "Joined meeting via QR successfully");
+    }
+
     private ParticipantResponse mapToParticipantResponse(MeetingParticipant participant) {
         return ParticipantResponse.builder()
                 .id(participant.getId())

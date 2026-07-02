@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/schedule")
+@RequestMapping({"/api/schedule", "/api/scheduling"})
 @RequiredArgsConstructor
 @Tag(name = "Meeting Scheduling", description = "Endpoints for scheduling, updating, cancelling, and listing meetings")
 public class SchedulingController {

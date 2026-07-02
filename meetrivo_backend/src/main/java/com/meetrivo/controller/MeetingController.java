@@ -143,4 +143,18 @@ public class MeetingController {
         meetingService.assignCoHost(meetingId, userId, role);
         return ApiResponse.success("Role assigned successfully", "Role assigned successfully");
     }
+
+    @PostMapping("/{meetingId}/qr")
+    @Operation(summary = "Generate Secure QR Token", description = "Generates a new secure QR token for the meeting. Only host/co-host/moderator can perform this.")
+    public ApiResponse<MeetingResponse> generateQrToken(@PathVariable String meetingId) {
+        MeetingResponse meeting = meetingService.generateQrToken(meetingId);
+        return ApiResponse.success(meeting, "Secure QR token generated successfully");
+    }
+
+    @GetMapping("/{meetingId}/qr")
+    @Operation(summary = "Get Secure QR Token", description = "Retrieves the active secure QR token for the meeting.")
+    public ApiResponse<MeetingResponse> getQrToken(@PathVariable String meetingId) {
+        MeetingResponse meeting = meetingService.getQrToken(meetingId);
+        return ApiResponse.success(meeting, "Secure QR token retrieved successfully");
+    }
 }

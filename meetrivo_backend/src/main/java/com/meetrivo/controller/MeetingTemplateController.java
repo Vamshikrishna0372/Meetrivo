@@ -1,6 +1,7 @@
 package com.meetrivo.controller;
 
 import com.meetrivo.dto.ApiResponse;
+import com.meetrivo.dto.MeetingResponse;
 import com.meetrivo.model.MeetingTemplate;
 import com.meetrivo.service.MeetingTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/meeting-templates")
+@RequestMapping({"/api/meeting-templates", "/api/templates"})
 @RequiredArgsConstructor
 @Tag(name = "Meeting Templates", description = "Endpoints for managing reusable personal and organization meeting settings")
 public class MeetingTemplateController {
@@ -34,6 +35,18 @@ public class MeetingTemplateController {
     @Operation(summary = "Get Template Details", description = "Retrieves details of a specific meeting template")
     public ApiResponse<MeetingTemplate> getTemplate(@PathVariable String id) {
         return ApiResponse.success(meetingTemplateService.getTemplate(id), "Template details retrieved successfully");
+    }
+
+    @PutMapping("/{id}")
+    @Operation(summary = "Update Meeting Template", description = "Updates an existing meeting template. Only the creator can perform this.")
+    public ApiResponse<MeetingTemplate> updateTemplate(@PathVariable String id, @RequestBody MeetingTemplate template) {
+        return ApiResponse.success(meetingTemplateService.updateTemplate(id, template), "Template updated successfully");
+    }
+
+    @PostMapping("/{id}/create-meeting")
+    @Operation(summary = "Create Meeting From Template", description = "Creates a new meeting using the template configurations")
+    public ApiResponse<MeetingResponse> createMeetingFromTemplate(@PathVariable String id) {
+        return ApiResponse.success(meetingTemplateService.createMeetingFromTemplate(id), "Meeting created from template successfully");
     }
 
     @DeleteMapping("/{id}")
