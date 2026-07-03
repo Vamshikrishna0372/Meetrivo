@@ -103,7 +103,7 @@ export function useWebSocket(
     const user = userStr ? JSON.parse(userStr) : null;
     const userId: string = user?.id || "";
 
-    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8081";
+    const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://meetrivo.onrender.com";
     const wsBase = BACKEND_URL.replace(/^https/, "wss").replace(/^http/, "ws");
     const serverId = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
     const sessionId = Math.random().toString(36).substring(2, 10);
