@@ -32,6 +32,12 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
+        // Bypass rate limiting for OPTIONS preflight and WebSocket connections
+        if ("OPTIONS".equalsIgnoreCase(method) || path.startsWith("/ws")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         // 1. Resolve Identifier (IP or User ID)
         String identifier = request.getRemoteAddr();
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

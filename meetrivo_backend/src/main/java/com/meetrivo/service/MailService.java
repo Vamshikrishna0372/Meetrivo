@@ -21,9 +21,12 @@ public class MailService extends BaseService {
     @Value("${spring.mail.host:}")
     private String mailHost;
 
+    @Value("${app.frontend.url:https://themeetrivo.vercel.app}")
+    private String frontendUrl;
+
     public void sendVerificationEmail(String toEmail, String username, String token) {
         String subject = "Verify your Meetrivo Account";
-        String verificationUrl = "http://localhost:5173/verify?token=" + token;
+        String verificationUrl = frontendUrl + "/verify?token=" + token;
         String text = String.format(
                 "Hello %s,\n\nWelcome to Meetrivo! Please verify your email by clicking the link below:\n%s\n\nIf you did not sign up for Meetrivo, please ignore this email.\n\nBest regards,\nThe Meetrivo Team",
                 username, verificationUrl
@@ -34,7 +37,7 @@ public class MailService extends BaseService {
 
     public void sendResetPasswordEmail(String toEmail, String username, String token) {
         String subject = "Reset your Meetrivo Password";
-        String resetUrl = "http://localhost:5173/reset-password?token=" + token;
+        String resetUrl = frontendUrl + "/reset-password?token=" + token;
         String text = String.format(
                 "Hello %s,\n\nYou requested to reset your password. Please click the link below to complete the request:\n%s\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe Meetrivo Team",
                 username, resetUrl

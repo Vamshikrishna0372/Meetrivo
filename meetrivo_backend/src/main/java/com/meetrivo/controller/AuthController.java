@@ -16,6 +16,12 @@ public class AuthController {
 
     private final AuthService authService;
 
+    @org.springframework.beans.factory.annotation.Value("${app.backend.url:https://meetrivo.onrender.com}")
+    private String backendUrl;
+
+    @org.springframework.beans.factory.annotation.Value("${app.frontend.url:https://themeetrivo.vercel.app}")
+    private String frontendUrl;
+
     @PostMapping("/register")
     @Operation(summary = "Register New User", description = "Creates a new user account")
     public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -45,11 +51,11 @@ public class AuthController {
     public org.springframework.web.servlet.view.RedirectView oauth2Redirect(@PathVariable String provider) {
         String url = "";
         if ("google".equalsIgnoreCase(provider)) {
-            url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=google-client-id&redirect_uri=http://localhost:8081/api/auth/oauth2/callback/google&response_type=code&scope=email%20profile";
+            url = "https://accounts.google.com/o/oauth2/v2/auth?client_id=google-client-id&redirect_uri=" + backendUrl + "/api/auth/oauth2/callback/google&response_type=code&scope=email%20profile";
         } else if ("microsoft".equalsIgnoreCase(provider)) {
-            url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=microsoft-client-id&redirect_uri=http://localhost:8081/api/auth/oauth2/callback/microsoft&response_type=code&scope=openid%20profile%20email";
+            url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=microsoft-client-id&redirect_uri=" + backendUrl + "/api/auth/oauth2/callback/microsoft&response_type=code&scope=openid%20profile%20email";
         } else if ("github".equalsIgnoreCase(provider)) {
-            url = "https://github.com/login/oauth/authorize?client_id=github-client-id&redirect_uri=http://localhost:8081/api/auth/oauth2/callback/github&scope=user:email";
+            url = "https://github.com/login/oauth/authorize?client_id=github-client-id&redirect_uri=" + backendUrl + "/api/auth/oauth2/callback/github&scope=user:email";
         } else {
             throw new IllegalArgumentException("Unsupported OAuth2 provider: " + provider);
         }
@@ -91,13 +97,13 @@ public class AuthController {
         try {
             AuthResponse authResponse = authService.loginOrRegisterOAuth2(loginReq);
             String userJson = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(authResponse.getUser());
-            String redirectUrl = "http://localhost:5173/login?token=" + authResponse.getToken() + "&user=" + java.net.URLEncoder.encode(userJson, "UTF-8");
+            String redirectUrl = frontendUrl + "/login?token=" + authResponse.getToken() + "&user=" + java.net.URLEncoder.encode(userJson, "UTF-8");
             return new org.springframework.web.servlet.view.RedirectView(redirectUrl);
         } catch (Exception e) {
             try {
-                return new org.springframework.web.servlet.view.RedirectView("http://localhost:5173/login?error=" + java.net.URLEncoder.encode(e.getMessage(), "UTF-8"));
+                return new org.springframework.web.servlet.view.RedirectView(frontendUrl + "/login?error=" + java.net.URLEncoder.encode(e.getMessage(), "UTF-8"));
             } catch (Exception ex) {
-                return new org.springframework.web.servlet.view.RedirectView("http://localhost:5173/login?error=OAuth2%20failed");
+                return new org.springframework.web.servlet.view.RedirectView(frontendUrl + "/login?error=OAuth2%20failed");
             }
         }
     }

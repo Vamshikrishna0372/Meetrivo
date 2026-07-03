@@ -163,7 +163,7 @@ function BillingPage() {
                         </td>
                         <td className="px-4 py-3 text-right">
                           <a
-                            href={`${import.meta.env.VITE_BACKEND_URL || 'https://meetrivo.onrender.com'}/api/invoices/download/${inv.id}`}
+                            href={`${import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_BACKEND_URL || 'https://meetrivo.onrender.com'}/api/invoices/download/${inv.id}`}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground"
                           >
                             <FiDownload className="h-3.5 w-3.5" />

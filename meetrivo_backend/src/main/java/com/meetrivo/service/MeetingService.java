@@ -38,7 +38,7 @@ public class MeetingService extends BaseService {
     private final AttendanceService attendanceService;
     private final Random random = new Random();
 
-    @Value("${app.meeting.join-url-prefix:http://localhost:8080/join/}")
+    @Value("${app.meeting.join-url-prefix:https://themeetrivo.vercel.app/join/}")
     private String joinUrlPrefix;
 
     public MeetingResponse createMeeting(CreateMeetingRequest request) {

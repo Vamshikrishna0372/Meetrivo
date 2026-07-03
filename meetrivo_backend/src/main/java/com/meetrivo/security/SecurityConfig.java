@@ -32,7 +32,7 @@ public class SecurityConfig {
                 .referrerPolicy(referrer -> referrer.policy(org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
             )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**", "/api/health/**", "/api/system/**", "/api/recordings/play/shared/**", "/api/recordings/download/shared/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                .requestMatchers("/api/auth/**", "/api/health/**", "/api/system/**", "/api/recordings/play/shared/**", "/api/recordings/download/shared/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/ws/**").permitAll()
                 .requestMatchers("/api/admin/**").hasAnyRole("ORGANIZATION_ADMIN", "ORGANIZATION_OWNER", "SUPER_ADMIN")
                 .anyRequest().authenticated()
             )

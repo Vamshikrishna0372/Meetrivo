@@ -21,7 +21,7 @@ public class CorsConfig {
             "http://localhost:8080",
             "http://localhost:3000",
             "http://localhost:5173",
-            "https://meetrivo.vercel.app",
+            "https://themeetrivo.vercel.app",
             "https://meetrivo.com",
             "https://app.meetrivo.com"
         ));
