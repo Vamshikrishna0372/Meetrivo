@@ -1,4 +1,4 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8081';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://meetrivo.onrender.com';
 
 // ── Core Fetch ─────────────────────────────────────────────────────────────
 
