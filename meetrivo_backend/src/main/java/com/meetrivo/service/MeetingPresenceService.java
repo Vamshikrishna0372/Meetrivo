@@ -47,6 +47,13 @@ public class MeetingPresenceService extends BaseService {
                 MeetingEventType.HOST_JOINED : MeetingEventType.USER_JOINED;
 
         broadcastEvent(meetingId, eventType, userId, participant.getUsername(), createPayload(meetingId, participant));
+        // DEBUG — log current participant list in this meeting after join
+        List<MeetingParticipant> activeParts = meetingParticipantRepository.findByMeetingIdAndIsActiveTrue(meetingId);
+        System.out.println("[DEBUG][PRESENCE] handleUserJoined meetingId=" + meetingId
+            + " userId=" + userId
+            + " activeParts=" + activeParts.stream()
+                .map(p -> p.getUserId() + "(" + p.getUsername() + ")")
+                .collect(java.util.stream.Collectors.joining(", ")));
     }
 
     public void handleUserLeft(String meetingId, String userId) {
@@ -191,14 +198,17 @@ public class MeetingPresenceService extends BaseService {
         switch (eventType) {
             case MIC_ON, MIC_OFF, VIDEO_ON, VIDEO_OFF, HAND_RAISED, HAND_LOWERED, CONNECTION_STATE_CHANGED:
                 messagingTemplate.convertAndSend("/topic/meeting/" + meetingId, event);
+                System.out.println("[DEBUG][BROADCAST] /topic/meeting/" + meetingId + " event=" + eventType + " userId=" + userId);
                 break;
             default:
                 messagingTemplate.convertAndSend("/topic/participants/" + meetingId, event);
+                System.out.println("[DEBUG][BROADCAST] /topic/participants/" + meetingId + " event=" + eventType + " userId=" + userId);
                 // Also broadcast USER_JOINED/LEFT to /topic/meeting/ so room.tsx gets the event
                 if (eventType == MeetingEventType.USER_JOINED || eventType == MeetingEventType.HOST_JOINED
                         || eventType == MeetingEventType.USER_LEFT || eventType == MeetingEventType.HOST_LEFT
                         || eventType == MeetingEventType.MEETING_STARTED || eventType == MeetingEventType.MEETING_ENDED) {
                     messagingTemplate.convertAndSend("/topic/meeting/" + meetingId, event);
+                    System.out.println("[DEBUG][BROADCAST] also /topic/meeting/" + meetingId + " event=" + eventType);
                 }
                 break;
         }

@@ -44,6 +44,7 @@ const item = {
 };
 
 type PreviewMeeting = {
+  id: string;
   title: string;
   meta: string;
   participants: number;
@@ -314,6 +315,7 @@ function Dashboard() {
                   key={m.id}
                   onClick={() =>
                     setPreview({
+                      id: m.id,
                       title: m.title,
                       meta: `${m.time} · ${m.relative}`,
                       participants: m.participants,
@@ -349,6 +351,7 @@ function Dashboard() {
                     key={m.id}
                     onClick={() =>
                       setPreview({
+                        id: m.id,
                         title: m.title,
                         meta: `${m.date} · ${m.duration}`,
                         participants: m.participants,
@@ -473,9 +476,9 @@ function Dashboard() {
                   {preview.host && <Meta label="Host" value={preview.host} />}
                 </div>
                 <Button variant="hero" className="w-full" asChild>
-                  <Link to="/room">
+                  <a href={`/room?meetingId=${preview.id}`}>
                     <FiVideo /> {preview.status === "upcoming" ? "Join when live" : "Open room"}
-                  </Link>
+                  </a>
                 </Button>
               </div>
             </>

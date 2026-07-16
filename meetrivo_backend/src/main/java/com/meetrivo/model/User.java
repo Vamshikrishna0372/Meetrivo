@@ -38,6 +38,28 @@ public class User implements UserDetails {
     private String profilePicture;
     private String bio;
 
+    private String phone;
+    private String timezone;
+    private String country;
+    private String language;
+
+    @org.springframework.data.annotation.Transient
+    private String organizationId;
+    @org.springframework.data.annotation.Transient
+    private String organizationName;
+    @org.springframework.data.annotation.Transient
+    private String departmentId;
+    @org.springframework.data.annotation.Transient
+    private String departmentName;
+    @org.springframework.data.annotation.Transient
+    private String teamId;
+    @org.springframework.data.annotation.Transient
+    private String teamName;
+    @org.springframework.data.annotation.Transient
+    private boolean online;
+    @org.springframework.data.annotation.Transient
+    private LocalDateTime lastActivityAt;
+
     @Builder.Default
     private Role role = Role.MEMBER;
 

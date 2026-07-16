@@ -27,11 +27,13 @@ public class JoinService extends BaseService {
 
     public ParticipantResponse joinMeeting(JoinMeetingRequest request) {
         String identifier = request.getMeetingIdentifier();
-        
+        System.out.println("[DEBUG][JOIN] identifier received=" + identifier);
+
         // Find meeting by ID or Code
         Meeting meeting = meetingRepository.findByMeetingId(identifier)
                 .or(() -> meetingRepository.findByMeetingCode(identifier))
                 .orElseThrow(() -> new RuntimeException("Meeting not found with identifier: " + identifier));
+        System.out.println("[DEBUG][JOIN] meeting found: meetingId=" + meeting.getMeetingId() + " meetingCode=" + meeting.getMeetingCode());
 
         User user = getCurrentUser();
         // Host role if current user is the host
@@ -148,6 +150,11 @@ public class JoinService extends BaseService {
         }
 
         MeetingParticipant savedParticipant = meetingParticipantRepository.save(participant);
+        System.out.println("[DEBUG][PARTICIPANT] saved: meetingId=" + savedParticipant.getMeetingId()
+            + " userId=" + savedParticipant.getUserId()
+            + " username=" + savedParticipant.getUsername()
+            + " role=" + savedParticipant.getRole()
+            + " approved=" + savedParticipant.isApproved());
         if (savedParticipant.isApproved()) {
             attendanceService.recordJoin(meeting.getMeetingId(), user.getId(), user.getUsername(), user.getFullName());
         }

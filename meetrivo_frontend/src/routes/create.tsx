@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FiCheck,
@@ -27,11 +27,6 @@ export const Route = createFileRoute("/create")({
 
 const steps = ["Configure", "Review", "Created"];
 
-function genId() {
-  const block = () => Math.floor(100 + Math.random() * 900);
-  return `MTR-${block()}-${block()}`;
-}
-
 type Form = {
   title: string;
   description: string;
@@ -54,11 +49,13 @@ function CreateMeeting() {
   const [loading, setLoading] = useState(false);
   const [createdMeeting, setCreatedMeeting] = useState<any>(null);
 
-  const [generatedRoomId, setGeneratedRoomId] = useState(() => genId());
-  const roomId = createdMeeting?.meetingCode || generatedRoomId;
-  const link = typeof window !== 'undefined'
-    ? `${window.location.origin}/lobby?code=${roomId}`
-    : `https://meetrivo.com/j/${roomId}`;
+  // roomId comes ONLY from the backend — never generated on the client
+  const roomId: string = createdMeeting?.meetingCode || "";
+  const link = roomId
+    ? (typeof window !== 'undefined'
+      ? `${window.location.origin}/lobby?code=${roomId}`
+      : `https://meetrivo.com/j/${roomId}`)
+    : "";
 
   const handleCreate = async () => {
     setLoading(true);

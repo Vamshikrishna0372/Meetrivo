@@ -5,8 +5,7 @@ import { AuthLayout } from "@/layouts/AuthLayout";
 import { Field } from "@/components/shared/Field";
 import { Button } from "@/components/ui/button";
 
-import { apiFetch, auth } from "@/lib/apiClient";
-
+import { auth } from "@/lib/apiClient";
 export const Route = createFileRoute("/login")({
   head: () => ({ meta: [{ title: "Login — Meetrivo" }] }),
   component: LoginPage,
@@ -63,10 +62,7 @@ function LoginPage() {
     if (Object.keys(errs).length) return;
 
     setLoading(true);
-    apiFetch<{ token: string; user: any }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ login: values.email, password: values.password }),
-    })
+    auth.login(values.email, values.password)
       .then((data) => {
         localStorage.setItem("meetrivo_token", data.token);
         localStorage.setItem("meetrivo_user", JSON.stringify(data.user));

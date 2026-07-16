@@ -13,6 +13,7 @@ import {
   FiUserPlus,
   FiEdit,
   FiShield,
+  FiSearch,
 } from "react-icons/fi";
 import { AppShell } from "@/layouts/AppShell";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/organizations")({
   component: OrganizationsPage,
 });
 
-type Tab = "teams" | "departments" | "members";
+type Tab = "overview" | "teams" | "departments" | "members";
 
 function OrganizationsPage() {
   const [organizations, setOrganizations] = useState<any[]>([]);
@@ -34,13 +35,29 @@ function OrganizationsPage() {
   const [teams, setTeams] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
+
+  // Filtering & Pagination
+  const [teamSearch, setTeamSearch] = useState("");
+  const [teamPage, setTeamPage] = useState(1);
+  const [deptSearch, setDeptSearch] = useState("");
+  const [deptPage, setDeptPage] = useState(1);
+  const itemsPerPage = 6;
 
   // Modals / forms
   const [showOrgModal, setShowOrgModal] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [orgDomain, setOrgDomain] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [tempPassword, setTempPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [industry, setIndustry] = useState("");
+  const [companySize, setCompanySize] = useState("");
+  const [country, setCountry] = useState("");
+  const [timezone, setTimezone] = useState("");
 
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [teamName, setTeamName] = useState("");
@@ -111,7 +128,10 @@ function OrganizationsPage() {
   const loadTabData = async (orgId: string, tab: Tab) => {
     setTabLoading(true);
     try {
-      if (tab === "teams") {
+      if (tab === "overview") {
+        const data = await orgsApi.getAnalytics(orgId);
+        setAnalytics(data);
+      } else if (tab === "teams") {
         const list = await orgsApi.getTeams(orgId);
         setTeams(list || []);
       } else if (tab === "departments") {
@@ -130,12 +150,28 @@ function OrganizationsPage() {
 
   const handleCreateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orgName.trim()) return;
+    if (!orgName.trim() || !ownerEmail.trim() || !tempPassword.trim()) {
+        toast.error("Please fill in all required fields.");
+        return;
+    }
     try {
-      const created = await orgsApi.create({ name: orgName, domain: orgDomain });
-      toast.success("Organization created!");
-      setOrgName("");
-      setOrgDomain("");
+      const payload = {
+          name: orgName,
+          domain: orgDomain,
+          ownerName: ownerName,
+          ownerEmail: ownerEmail,
+          temporaryPassword: tempPassword,
+          phone: phone,
+          industry: industry,
+          companySize: companySize,
+          country: country,
+          timezone: timezone
+      };
+      const created = await orgsApi.create(payload);
+      toast.success("Organization and Owner created!");
+      setOrgName(""); setOrgDomain(""); setOwnerName(""); setOwnerEmail("");
+      setTempPassword(""); setPhone(""); setIndustry(""); setCompanySize("");
+      setCountry(""); setTimezone("");
       setShowOrgModal(false);
       loadOrganizations();
     } catch (e: any) {
@@ -354,6 +390,14 @@ function OrganizationsPage() {
     }
   };
 
+  const filteredTeams = teams.filter((t: any) => t.name.toLowerCase().includes(teamSearch.toLowerCase()) || (t.description || "").toLowerCase().includes(teamSearch.toLowerCase()));
+  const totalTeamPages = Math.ceil(filteredTeams.length / itemsPerPage) || 1;
+  const displayedTeams = filteredTeams.slice((teamPage - 1) * itemsPerPage, teamPage * itemsPerPage);
+
+  const filteredDepts = departments.filter((d: any) => d.name.toLowerCase().includes(deptSearch.toLowerCase()) || (d.description || "").toLowerCase().includes(deptSearch.toLowerCase()));
+  const totalDeptPages = Math.ceil(filteredDepts.length / itemsPerPage) || 1;
+  const displayedDepts = filteredDepts.slice((deptPage - 1) * itemsPerPage, deptPage * itemsPerPage);
+
   if (loading) {
     return (
       <AppShell>
@@ -412,9 +456,35 @@ function OrganizationsPage() {
             <>
               {/* Header Info */}
               <div className="rounded-2xl border border-border bg-card p-5">
-                <h2 className="text-xl font-bold">{selectedOrg.name}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Workspace domain: {selectedOrg.domain || "None"}</p>
-                <div className="mt-4 flex gap-1 rounded-xl border border-border bg-background p-1 max-w-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold">{selectedOrg.name}</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{selectedOrg.domain ? `Domain: ${selectedOrg.domain}` : "No domain set"}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedOrg.industry && (
+                        <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">{selectedOrg.industry}</span>
+                      )}
+                      {selectedOrg.companySize && (
+                        <span className="inline-flex items-center rounded-full bg-surface px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">{selectedOrg.companySize} employees</span>
+                      )}
+                      {selectedOrg.country && (
+                        <span className="inline-flex items-center rounded-full bg-surface px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">{selectedOrg.country}</span>
+                      )}
+                    </div>
+                  </div>
+                  {selectedOrg.logo && (
+                    <img src={selectedOrg.logo} alt="Logo" className="h-12 w-12 rounded-xl object-cover border border-border" />
+                  )}
+                </div>
+                <div className="mt-4 flex gap-1 rounded-xl border border-border bg-background p-1 max-w-lg">
+                  <button
+                    onClick={() => setActiveTab("overview")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-medium cursor-pointer ${
+                      activeTab === "overview" ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Overview
+                  </button>
                   <button
                     onClick={() => setActiveTab("teams")}
                     className={`flex-1 rounded-lg py-1.5 text-xs font-medium cursor-pointer ${
@@ -457,88 +527,178 @@ function OrganizationsPage() {
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.15 }}
                     >
+                      {activeTab === "overview" && analytics && (
+                        <div className="space-y-6">
+                          <h3 className="text-sm font-semibold">Organization Overview</h3>
+                          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Total Members</p>
+                              <p className="text-2xl font-bold">{analytics.totalMembers || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Active Members</p>
+                              <p className="text-2xl font-bold">{analytics.activeMembers || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Teams</p>
+                              <p className="text-2xl font-bold">{analytics.teamsCount || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Departments</p>
+                              <p className="text-2xl font-bold">{analytics.departmentsCount || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Meetings</p>
+                              <p className="text-2xl font-bold">{analytics.meetingsCount || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Meeting Hours</p>
+                              <p className="text-2xl font-bold">{analytics.meetingHours || 0}</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Storage Used</p>
+                              <p className="text-2xl font-bold">{analytics.storageUsageMb ? analytics.storageUsageMb.toFixed(2) : "0.00"} MB</p>
+                            </div>
+                            <div className="rounded-xl border border-border bg-surface p-4">
+                              <p className="text-xs text-muted-foreground mb-1">Active Plan</p>
+                              <p className="text-2xl font-bold capitalize text-primary">{analytics.planType || "Free"}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {activeTab === "teams" && (
                         <div className="space-y-4">
-                          <div className="flex justify-between items-center">
+                          <div className="flex justify-between items-center flex-wrap gap-2">
                             <h3 className="text-sm font-semibold">Teams list</h3>
-                            <Button size="sm" variant="glass" onClick={() => setShowTeamModal(true)}>
-                              <FiPlusCircle className="mr-1" /> Add Team
-                            </Button>
+                            <div className="flex gap-2 items-center">
+                              <div className="relative">
+                                <FiSearch className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <input
+                                  type="text"
+                                  placeholder="Search teams..."
+                                  value={teamSearch}
+                                  onChange={(e) => { setTeamSearch(e.target.value); setTeamPage(1); }}
+                                  className="h-9 w-48 rounded-lg border border-border bg-background pl-9 pr-3 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <Button size="sm" variant="glass" onClick={() => setShowTeamModal(true)}>
+                                <FiPlusCircle className="mr-1" /> Add Team
+                              </Button>
+                            </div>
                           </div>
-                          {teams.length === 0 ? (
+                          {filteredTeams.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center text-xs text-muted-foreground">
-                              No teams exist under this organization.
+                              No teams found matching criteria.
                             </div>
                           ) : (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {teams.map((t) => (
-                                <div key={t.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
-                                  <div className="cursor-pointer flex-1" onClick={() => openManageTeam(t)}>
-                                    <h4 className="font-semibold text-sm hover:text-primary transition-colors">{t.name}</h4>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{t.description || "No description"}</p>
-                                    {t.managerId && (
-                                      <span className="mt-2 inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                        <FiShield className="h-3 w-3" /> Manager: {members.find(m => m.userId === t.managerId)?.fullName || t.managerId}
-                                      </span>
-                                    )}
+                            <>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {displayedTeams.map((t) => (
+                                  <div key={t.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+                                    <div className="cursor-pointer flex-1" onClick={() => openManageTeam(t)}>
+                                      <h4 className="font-semibold text-sm hover:text-primary transition-colors">{t.name}</h4>
+                                      <p className="text-xs text-muted-foreground mt-0.5">{t.description || "No description"}</p>
+                                      {t.managerId && (
+                                        <span className="mt-2 inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                          <FiShield className="h-3 w-3" /> Manager: {members.find(m => m.userId === t.managerId)?.fullName || t.managerId}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
+                                      <Button size="sm" variant="glass" onClick={() => openEditTeam(t)}>
+                                        <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                                      </Button>
+                                      <button
+                                        onClick={() => handleDeleteTeam(t.id)}
+                                        className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                      >
+                                        <FiTrash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
-                                    <Button size="sm" variant="glass" onClick={() => openEditTeam(t)}>
-                                      <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
-                                    </Button>
-                                    <button
-                                      onClick={() => handleDeleteTeam(t.id)}
-                                      className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center"
-                                    >
-                                      <FiTrash2 className="h-4 w-4 mr-1" /> Delete
-                                    </button>
+                                ))}
+                              </div>
+                              {totalTeamPages > 1 && (
+                                <div className="flex items-center justify-between pt-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    Showing {(teamPage - 1) * itemsPerPage + 1} to {Math.min(teamPage * itemsPerPage, filteredTeams.length)} of {filteredTeams.length}
+                                  </span>
+                                  <div className="flex gap-1">
+                                    <Button variant="outline" size="sm" onClick={() => setTeamPage(p => Math.max(1, p - 1))} disabled={teamPage === 1}>Prev</Button>
+                                    <Button variant="outline" size="sm" onClick={() => setTeamPage(p => Math.min(totalTeamPages, p + 1))} disabled={teamPage === totalTeamPages}>Next</Button>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
 
                       {activeTab === "departments" && (
                         <div className="space-y-4">
-                          <div className="flex justify-between items-center">
+                          <div className="flex justify-between items-center flex-wrap gap-2">
                             <h3 className="text-sm font-semibold">Departments list</h3>
-                            <Button size="sm" variant="glass" onClick={() => setShowDeptModal(true)}>
-                              <FiPlusCircle className="mr-1" /> Add Department
-                            </Button>
+                            <div className="flex gap-2 items-center">
+                              <div className="relative">
+                                <FiSearch className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <input
+                                  type="text"
+                                  placeholder="Search departments..."
+                                  value={deptSearch}
+                                  onChange={(e) => { setDeptSearch(e.target.value); setDeptPage(1); }}
+                                  className="h-9 w-48 rounded-lg border border-border bg-background pl-9 pr-3 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                              <Button size="sm" variant="glass" onClick={() => setShowDeptModal(true)}>
+                                <FiPlusCircle className="mr-1" /> Add Department
+                              </Button>
+                            </div>
                           </div>
-                          {departments.length === 0 ? (
+                          {filteredDepts.length === 0 ? (
                             <div className="rounded-2xl border border-dashed border-border bg-card/40 p-10 text-center text-xs text-muted-foreground">
-                              No departments exist under this organization.
+                              No departments found matching criteria.
                             </div>
                           ) : (
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {departments.map((d) => (
-                                <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
-                                  <div className="cursor-pointer flex-1" onClick={() => openManageDept(d)}>
-                                    <h4 className="font-semibold text-sm hover:text-primary transition-colors">{d.name}</h4>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{d.description || "No description"}</p>
-                                    {d.headId && (
-                                      <span className="mt-2 inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
-                                        Head: {members.find(m => m.userId === d.headId)?.fullName || d.headId}
-                                      </span>
-                                    )}
+                            <>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                {displayedDepts.map((d) => (
+                                  <div key={d.id} className="rounded-xl border border-border bg-card p-4 flex flex-col justify-between gap-4">
+                                    <div className="cursor-pointer flex-1" onClick={() => openManageDept(d)}>
+                                      <h4 className="font-semibold text-sm hover:text-primary transition-colors">{d.name}</h4>
+                                      <p className="text-xs text-muted-foreground mt-0.5">{d.description || "No description"}</p>
+                                      {d.headId && (
+                                        <span className="mt-2 inline-flex items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 text-[10px] font-medium text-success">
+                                          Head: {members.find(m => m.userId === d.headId)?.fullName || d.headId}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
+                                      <Button size="sm" variant="glass" onClick={() => openEditDept(d)}>
+                                        <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                                      </Button>
+                                      <button
+                                        onClick={() => handleDeleteDept(d.id)}
+                                        className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                      >
+                                        <FiTrash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
-                                  <div className="flex justify-end gap-2 border-t border-border/50 pt-3">
-                                    <Button size="sm" variant="glass" onClick={() => openEditDept(d)}>
-                                      <FiEdit className="h-3.5 w-3.5 mr-1" /> Edit
-                                    </Button>
-                                    <button
-                                      onClick={() => handleDeleteDept(d.id)}
-                                      className="text-xs font-semibold bg-destructive/10 hover:bg-destructive/20 text-destructive px-2 py-1 rounded-lg transition-colors cursor-pointer flex items-center"
-                                    >
-                                      <FiTrash2 className="h-4 w-4 mr-1" /> Delete
-                                    </button>
+                                ))}
+                              </div>
+                              {totalDeptPages > 1 && (
+                                <div className="flex items-center justify-between pt-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    Showing {(deptPage - 1) * itemsPerPage + 1} to {Math.min(deptPage * itemsPerPage, filteredDepts.length)} of {filteredDepts.length}
+                                  </span>
+                                  <div className="flex gap-1">
+                                    <Button variant="outline" size="sm" onClick={() => setDeptPage(p => Math.max(1, p - 1))} disabled={deptPage === 1}>Prev</Button>
+                                    <Button variant="outline" size="sm" onClick={() => setDeptPage(p => Math.min(totalDeptPages, p + 1))} disabled={deptPage === totalDeptPages}>Next</Button>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -605,14 +765,31 @@ function OrganizationsPage() {
       {/* Org Creation Modal */}
       {showOrgModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-glow space-y-4">
-            <h3 className="text-sm font-semibold">New Organization</h3>
-            <form onSubmit={handleCreateOrg} className="space-y-4">
-              <Field label="Name" placeholder="e.g. Acme Corp" value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
-              <Field label="Domain" placeholder="e.g. acme.com" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} />
-              <div className="flex justify-end gap-2 pt-2">
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-glow space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold">New Enterprise Organization</h3>
+            <form onSubmit={handleCreateOrg} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-primary border-b border-border pb-1">Organization Details</h4>
+                  <Field label="Organization Name *" placeholder="e.g. Acme Corp" value={orgName} onChange={(e) => setOrgName(e.target.value)} required />
+                  <Field label="Domain" placeholder="e.g. acme.com" value={orgDomain} onChange={(e) => setOrgDomain(e.target.value)} />
+                  <Field label="Industry" placeholder="e.g. Software" value={industry} onChange={(e) => setIndustry(e.target.value)} />
+                  <Field label="Company Size" placeholder="e.g. 100-500" value={companySize} onChange={(e) => setCompanySize(e.target.value)} />
+                  <Field label="Phone" placeholder="e.g. +1 555 1234" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <Field label="Country" placeholder="e.g. United States" value={country} onChange={(e) => setCountry(e.target.value)} />
+                  <Field label="Timezone" placeholder="e.g. America/New_York" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
+                </div>
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-primary border-b border-border pb-1">Owner Account</h4>
+                  <p className="text-xs text-muted-foreground mb-2">This account will be created as the Organization Owner.</p>
+                  <Field label="Owner Full Name" placeholder="e.g. Jane Doe" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} />
+                  <Field label="Owner Email *" type="email" placeholder="e.g. jane@acme.com" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required />
+                  <Field label="Temporary Password *" type="password" placeholder="e.g. TempPass123!" value={tempPassword} onChange={(e) => setTempPassword(e.target.value)} required />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
                 <Button type="button" variant="ghost" onClick={() => setShowOrgModal(false)}>Cancel</Button>
-                <Button type="submit" variant="hero">Create</Button>
+                <Button type="submit" variant="hero">Create Organization</Button>
               </div>
             </form>
           </div>

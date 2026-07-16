@@ -29,8 +29,28 @@ public class OrganizationService extends BaseService {
     private final SecurityValidationService securityValidation;
     private final MeetingRepository meetingRepository;
     private final MeetingRecordingRepository meetingRecordingRepository;
+    private final org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
-    public Organization createOrganization(OrganizationRequest request, String ownerId) {
+    public Organization createOrganization(OrganizationRequest request, String currentUserId) {
+        // Create the new Owner User
+        if (userRepository.existsByEmail(request.getOwnerEmail())) {
+            throw new RuntimeException("An account with the owner email already exists");
+        }
+        
+        String username = request.getOwnerEmail().split("@")[0] + "_" + UUID.randomUUID().toString().substring(0, 8);
+        
+        User owner = User.builder()
+                .email(request.getOwnerEmail())
+                .username(username)
+                .fullName(request.getOwnerName() != null ? request.getOwnerName() : username)
+                .password(passwordEncoder.encode(request.getTemporaryPassword()))
+                .role(Role.ORGANIZATION_OWNER)
+                .accountStatus(AccountStatus.ACTIVE)
+                .emailVerified(true)
+                .build();
+        
+        User savedOwner = userRepository.save(owner);
+
         String slug = generateUniqueSlug(request.getName());
 
         Organization org = Organization.builder()
@@ -39,7 +59,12 @@ public class OrganizationService extends BaseService {
                 .logo(request.getLogo())
                 .domain(request.getDomain())
                 .slug(slug)
-                .ownerId(ownerId)
+                .ownerId(savedOwner.getId())
+                .phone(request.getPhone())
+                .industry(request.getIndustry())
+                .companySize(request.getCompanySize())
+                .country(request.getCountry())
+                .timezone(request.getTimezone())
                 .status(OrganizationStatus.ACTIVE)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -47,16 +72,16 @@ public class OrganizationService extends BaseService {
 
         Organization savedOrg = organizationRepository.save(org);
 
-        // Add owner as a member
+        // Add owner as a member. The Super Admin (currentUserId) is intentionally NOT added.
         OrganizationMember member = OrganizationMember.builder()
                 .organizationId(savedOrg.getId())
-                .userId(ownerId)
+                .userId(savedOwner.getId())
                 .role(OrganizationRole.OWNER)
                 .joinedAt(LocalDateTime.now())
                 .build();
         organizationMemberRepository.save(member);
 
-        logInfo("Organization created: " + savedOrg.getName() + " by owner: " + ownerId);
+        logInfo("Organization created: " + savedOrg.getName() + " and owner account created for: " + request.getOwnerEmail());
         return savedOrg;
     }
 
@@ -71,6 +96,11 @@ public class OrganizationService extends BaseService {
         org.setDescription(request.getDescription());
         org.setLogo(request.getLogo());
         org.setDomain(request.getDomain());
+        if (request.getPhone() != null) org.setPhone(request.getPhone());
+        if (request.getIndustry() != null) org.setIndustry(request.getIndustry());
+        if (request.getCompanySize() != null) org.setCompanySize(request.getCompanySize());
+        if (request.getCountry() != null) org.setCountry(request.getCountry());
+        if (request.getTimezone() != null) org.setTimezone(request.getTimezone());
         org.setUpdatedAt(LocalDateTime.now());
 
         Organization updatedOrg = organizationRepository.save(org);
@@ -266,6 +296,12 @@ public class OrganizationService extends BaseService {
     }
 
     public List<Organization> getMyOrganizations(String userId) {
+        // Super Admins can see all organizations for management purposes
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null && user.getRole() == Role.SUPER_ADMIN) {
+            return organizationRepository.findAll();
+        }
+
         List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(userId);
         List<String> orgIds = memberships.stream()
                 .map(OrganizationMember::getOrganizationId)

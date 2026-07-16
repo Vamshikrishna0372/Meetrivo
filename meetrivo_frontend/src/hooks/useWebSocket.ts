@@ -65,6 +65,17 @@ export function useWebSocket(
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const destroyed = useRef(false);
 
+  // Use refs for callbacks to prevent reconnects when callbacks change
+  const onMessageReceivedRef = useRef(onMessageReceived);
+  const onSignalReceivedRef = useRef(onSignalReceived);
+  const onWhiteboardReceivedRef = useRef(onWhiteboardReceived);
+
+  useEffect(() => {
+    onMessageReceivedRef.current = onMessageReceived;
+    onSignalReceivedRef.current = onSignalReceived;
+    onWhiteboardReceivedRef.current = onWhiteboardReceived;
+  });
+
   const formatFrame = (
     command: string,
     headers: Record<string, string>,
@@ -108,6 +119,7 @@ export function useWebSocket(
     const serverId = String(Math.floor(Math.random() * 1000)).padStart(3, "0");
     const sessionId = Math.random().toString(36).substring(2, 10);
     const wsUrl = `${wsBase}/ws/${serverId}/${sessionId}/websocket`;
+    console.log(`[DEBUG][WS] CONNECT meetingId=${meetingId} userId=${userId} url=${wsUrl}`);
 
     let socket: WebSocket;
     try {
@@ -144,6 +156,7 @@ export function useWebSocket(
       if (frame.command === "CONNECTED") {
         setConnected(true);
         retryCount.current = 0;
+        console.log(`[DEBUG][WS] CONNECTED. Subscribing with meetingId=${meetingId}`);
         
         // Subscribe topics
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-chat", destination: `/topic/chat/${meetingId}` }));
@@ -152,8 +165,13 @@ export function useWebSocket(
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-meeting", destination: `/topic/meeting/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-wb", destination: `/topic/whiteboard/${meetingId}` }));
         socket.send(formatFrame("SUBSCRIBE", { id: "sub-breakout", destination: `/topic/breakout/${meetingId}` }));
+        console.log(`[DEBUG][WS] SUBSCRIBE /topic/chat/${meetingId}`);
+        console.log(`[DEBUG][WS] SUBSCRIBE /topic/signaling/${meetingId}`);
+        console.log(`[DEBUG][WS] SUBSCRIBE /topic/participants/${meetingId}`);
+        console.log(`[DEBUG][WS] SUBSCRIBE /topic/meeting/${meetingId}`);
         
         socket.send(formatFrame("SEND", { destination: `/app/meeting/${meetingId}/join` }, ""));
+        console.log(`[DEBUG][WS] SEND /app/meeting/${meetingId}/join`);
         socket.send(formatFrame("SEND", {
           destination: `/app/meeting/${meetingId}/media/join`,
           "content-type": "application/json",
@@ -162,6 +180,7 @@ export function useWebSocket(
         // Fetch initial participants
         meetingsApi.getParticipants(meetingId)
           .then(data => {
+            console.log(`[DEBUG][WS] REST participants for meetingId=${meetingId}:`, data?.map((p: any) => p.userId || p.id));
             setParticipants(mapParticipants(data, userId));
           })
           .catch(() => {});
@@ -201,14 +220,17 @@ export function useWebSocket(
               self: isSelf,
             };
             setMessages((prev) => [...prev, newMsg]);
-            if (onMessageReceived) onMessageReceived(body);
+            if (onMessageReceivedRef.current) onMessageReceivedRef.current(body);
 
           } else if (dest.includes("/topic/signaling/")) {
-            if (onSignalReceived) onSignalReceived(body);
+            if (body.receiverId && body.receiverId !== userId) return;
+            console.log(`[DEBUG][WS] SIGNAL received type=${body.type} from=${body.senderId} to=${body.receiverId} meetingId=${body.meetingId}`);
+            if (onSignalReceivedRef.current) onSignalReceivedRef.current(body);
 
           } else if (dest.includes("/topic/participants/")) {
             const eventType = body.eventType;
             const currentParts = body.payload?.currentParticipants;
+            console.log(`[DEBUG][WS] PARTICIPANTS event=${eventType} currentParts=`, currentParts?.map((p: any) => p.userId || p.id));
             if (currentParts && Array.isArray(currentParts)) {
               setParticipants(mapParticipants(currentParts, userId));
             }
@@ -258,7 +280,7 @@ export function useWebSocket(
               );
             }
           } else if (dest.includes("/topic/whiteboard/")) {
-            if (onWhiteboardReceived) onWhiteboardReceived(body);
+            if (onWhiteboardReceivedRef.current) onWhiteboardReceivedRef.current(body);
           }
         } catch (e) {
           console.error("Failed to parse WS message:", e);
@@ -278,7 +300,7 @@ export function useWebSocket(
     socket.onerror = () => {
       console.warn("WebSocket error — backend may not be running");
     };
-  }, [meetingId, onMessageReceived, onSignalReceived]);
+  }, [meetingId]);
 
   const scheduleReconnect = useCallback(() => {
     if (destroyed.current || retryCount.current >= MAX_RETRIES) return;
@@ -313,7 +335,7 @@ export function useWebSocket(
     };
   }, [meetingId, connect]);
 
-  const sendRaw = (destination: string, payload: any) => {
+  const sendRaw = useCallback((destination: string, payload: any) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     ws.current.send(
       "SEND\n" +
@@ -322,12 +344,14 @@ export function useWebSocket(
       JSON.stringify(payload) +
       "\u0000",
     );
-  };
+  }, []);
 
-  const sendMessage = (content: string) =>
-    sendRaw(`/app/chat/${meetingId}/message`, { message: content, receiverId: null });
+  const sendMessage = useCallback((content: string) =>
+    sendRaw(`/app/chat/${meetingId}/message`, { message: content, receiverId: null }),
+    [meetingId, sendRaw]
+  );
 
-  const sendReaction = (emoji: string) => {
+  const sendReaction = useCallback((emoji: string) => {
     const emojiToType: Record<string, string> = {
       "👍": "THUMBS_UP",
       "❤️": "HEART",
@@ -337,20 +361,24 @@ export function useWebSocket(
       "🔥": "FIRE",
     };
     sendRaw(`/app/chat/${meetingId}/reaction`, { type: emojiToType[emoji] || "CLAP" });
-  };
+  }, [meetingId, sendRaw]);
 
-  const sendHand = (raised: boolean) =>
-    sendRaw(`/app/meeting/${meetingId}/media/hand`, { enabled: raised });
+  const sendHand = useCallback((raised: boolean) =>
+    sendRaw(`/app/meeting/${meetingId}/media/hand`, { enabled: raised }),
+    [meetingId, sendRaw]
+  );
 
-  const sendSignal = (signalType: string, receiverId: string, payload: any) =>
+  const sendSignal = useCallback((signalType: string, receiverId: string, payload: any) =>
     sendRaw(`/app/meeting/${meetingId}/signaling`, {
       type: signalType,
       meetingId,
       receiverId,
       payload,
-    });
+    }),
+    [meetingId, sendRaw]
+  );
 
-  const updateState = (micOn: boolean, camOn: boolean, screenShare: boolean) => {
+  const updateState = useCallback((micOn: boolean, camOn: boolean, screenShare: boolean) => {
     sendRaw(`/app/meeting/${meetingId}/state`, {
       isMuted: !micOn,
       isCameraEnabled: camOn,
@@ -359,10 +387,12 @@ export function useWebSocket(
     sendRaw(`/app/meeting/${meetingId}/media/audio`, { enabled: micOn });
     sendRaw(`/app/meeting/${meetingId}/media/video`, { enabled: camOn });
     sendRaw(`/app/meeting/${meetingId}/media/screenshare`, { enabled: screenShare });
-  };
+  }, [meetingId, sendRaw]);
 
-  const sendWhiteboardEvent = (eventType: string, data: any) =>
-    sendRaw(`/app/whiteboard/${meetingId}/event`, { eventType, ...data });
+  const sendWhiteboardEvent = useCallback((eventType: string, data: any) =>
+    sendRaw(`/app/whiteboard/${meetingId}/event`, { eventType, ...data }),
+    [meetingId, sendRaw]
+  );
 
   return {
     connected,

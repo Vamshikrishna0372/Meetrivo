@@ -16,4 +16,16 @@ public class OrganizationRequest {
     private String description;
     private String logo;
     private String domain;
+    
+    // New fields for Phase 5B
+    private String ownerName;
+    @NotBlank(message = "Owner email is required")
+    private String ownerEmail;
+    @NotBlank(message = "Temporary password is required")
+    private String temporaryPassword;
+    private String phone;
+    private String industry;
+    private String companySize;
+    private String country;
+    private String timezone;
 }

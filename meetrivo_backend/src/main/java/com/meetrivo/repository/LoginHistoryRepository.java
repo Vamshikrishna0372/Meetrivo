@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface LoginHistoryRepository extends MongoRepository<LoginHistory, String> {
     List<LoginHistory> findByUserId(String userId);
+    long countByUserId(String userId);
 }

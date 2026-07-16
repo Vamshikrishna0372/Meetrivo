@@ -1,6 +1,7 @@
 package com.meetrivo.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
  * Platform roles for users.
@@ -15,6 +16,14 @@ public enum Role {
     TEAM_MANAGER,
     MEMBER,
     GUEST;
+
+    /**
+     * Ensures Jackson serializes the canonical enum name (e.g. "MEMBER" not "USER").
+     */
+    @JsonValue
+    public String toValue() {
+        return this.name();
+    }
 
     /**
      * Lenient factory method for JSON / MongoDB deserialization.
@@ -32,16 +41,16 @@ public enum Role {
             return MEMBER;
         }
         switch (value.toUpperCase().trim()) {
-            case "SUPER_ADMIN":     return SUPER_ADMIN;
+            case "SUPER_ADMIN":        return SUPER_ADMIN;
             case "ORGANIZATION_OWNER": return ORGANIZATION_OWNER;
             case "ORGANIZATION_ADMIN": return ORGANIZATION_ADMIN;
-            case "TEAM_MANAGER":    return TEAM_MANAGER;
-            case "MEMBER":          return MEMBER;
-            case "GUEST":           return GUEST;
+            case "TEAM_MANAGER":       return TEAM_MANAGER;
+            case "MEMBER":             return MEMBER;
+            case "GUEST":              return GUEST;
             // ── Legacy / migrated values ─────────────────────────────────
-            case "USER":            return MEMBER;           // legacy default
-            case "ADMIN":           return ORGANIZATION_ADMIN; // legacy admin
-            default:                return MEMBER;           // safe fallback
+            case "USER":               return MEMBER;            // legacy default
+            case "ADMIN":              return ORGANIZATION_ADMIN; // legacy admin
+            default:                   return MEMBER;            // safe fallback
         }
     }
 }

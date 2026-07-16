@@ -34,6 +34,12 @@ public class Organization {
     private String logo;
 
     private String domain;
+    
+    private String phone;
+    private String industry;
+    private String companySize;
+    private String country;
+    private String timezone;
 
     @Builder.Default
     private OrganizationStatus status = OrganizationStatus.ACTIVE;

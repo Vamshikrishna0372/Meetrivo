@@ -22,4 +22,8 @@ public interface MeetingParticipantRepository extends MongoRepository<MeetingPar
     List<MeetingParticipant> findParticipantsByMeetingId(String meetingId);
 
     long countByMeetingIdAndIsActiveTrue(String meetingId);
+
+    List<MeetingParticipant> findByUserId(String userId);
+
+    long countByUserId(String userId);
 }

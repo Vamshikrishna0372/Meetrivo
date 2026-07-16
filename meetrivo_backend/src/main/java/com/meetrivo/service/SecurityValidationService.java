@@ -18,11 +18,23 @@ public class SecurityValidationService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final DepartmentRepository departmentRepository;
+    private final UserRepository userRepository;
 
     /**
      * Validates if a user belongs to an organization and optionally has one of the required roles.
      */
     public OrganizationMember validateOrganizationAccess(String organizationId, String userId, OrganizationRole... requiredRoles) {
+        // Super Admin bypasses all org-level membership checks (platform-level oversight)
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null && user.getRole() == Role.SUPER_ADMIN) {
+            // Return a synthetic member record for SUPER_ADMIN so callers get an OrganizationMember
+            return OrganizationMember.builder()
+                    .organizationId(organizationId)
+                    .userId(userId)
+                    .role(OrganizationRole.OWNER)
+                    .build();
+        }
+
         OrganizationMember member = organizationMemberRepository.findByOrganizationIdAndUserId(organizationId, userId)
                 .orElseThrow(() -> new AccessDeniedException("User is not a member of organization " + organizationId));
 

@@ -23,6 +23,18 @@ public class UserResponse {
     private Role role;
     private AccountStatus accountStatus;
     private boolean emailVerified;
+    private String phone;
+    private String timezone;
+    private String country;
+    private String language;
+    private String organizationId;
+    private String organizationName;
+    private String departmentId;
+    private String departmentName;
+    private String teamId;
+    private String teamName;
+    private boolean online;
+    private LocalDateTime lastActivityAt;
     private com.meetrivo.model.UserPreferences preferences;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

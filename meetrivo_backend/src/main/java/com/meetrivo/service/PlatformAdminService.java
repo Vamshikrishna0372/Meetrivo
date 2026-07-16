@@ -9,8 +9,9 @@ import org.springframework.stereotype.Service;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,7 +26,18 @@ public class PlatformAdminService extends BaseService {
     private final MeetingParticipantRepository participantRepository;
     private final PlatformSettingRepository settingRepository;
     private final AnnouncementRepository announcementRepository;
-    
+    private final OrganizationMemberRepository organizationMemberRepository;
+    private final OrganizationRepository organizationRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final TeamRepository teamRepository;
+    private final DepartmentRepository departmentRepository;
+    private final ChatMessageRepository chatMessageRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final LoginHistoryRepository loginHistoryRepository;
+    private final WhiteboardSessionRepository whiteboardSessionRepository;
+    private final BreakoutRoomRepository breakoutRoomRepository;
+    private final AnalyticsEventRepository analyticsEventRepository;
+
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
 
@@ -79,11 +91,315 @@ public class PlatformAdminService extends BaseService {
         return auditLogService.getAllLogs().stream().limit(50).collect(Collectors.toList());
     }
 
-    // ─── User Management ─────────────────────────────────────────────────────
+    // ─── User Management ────────────────────────────────────────────────
 
     public List<User> getAllUsers() {
+        return getAllUsers(null, null, null, null, null, null, null, null, null);
+    }
+
+    /**
+     * Filtered, searched, and sorted user list.
+     * All params are optional; null means no filter applied.
+     */
+    public List<User> getAllUsers(String search, String role, String status,
+                                  String sortBy, String sortDir,
+                                  String organization, String department, String team, String emailVerified) {
         validateAdminOrSuperAdmin();
-        return userRepository.findAll();
+
+        List<User> users = userRepository.findAll();
+
+        // Search by name / username / email / phone
+        if (search != null && !search.isBlank()) {
+            String lc = search.toLowerCase().trim();
+            users = users.stream()
+                    .filter(u -> (u.getFullName() != null && u.getFullName().toLowerCase().contains(lc))
+                            || (u.getUsername() != null && u.getUsername().toLowerCase().contains(lc))
+                            || (u.getEmail() != null && u.getEmail().toLowerCase().contains(lc))
+                            || (u.getPhone() != null && u.getPhone().toLowerCase().contains(lc)))
+                    .collect(Collectors.toList());
+        }
+
+        // Filter by role
+        if (role != null && !role.isBlank()) {
+            Role roleEnum = Role.fromString(role);
+            users = users.stream().filter(u -> u.getRole() == roleEnum).collect(Collectors.toList());
+        }
+
+        // Filter by account status
+        if (status != null && !status.isBlank()) {
+            try {
+                AccountStatus statusEnum = AccountStatus.valueOf(status.toUpperCase());
+                users = users.stream().filter(u -> u.getAccountStatus() == statusEnum).collect(Collectors.toList());
+            } catch (IllegalArgumentException ignored) {}
+        }
+
+        // Filter by emailVerified
+        if (emailVerified != null && !emailVerified.isBlank()) {
+            boolean ev = Boolean.parseBoolean(emailVerified);
+            users = users.stream().filter(u -> u.isEmailVerified() == ev).collect(Collectors.toList());
+        }
+
+        // Enrich transient membership fields
+        users = users.stream().map(this::enrichUser).collect(Collectors.toList());
+
+        // Filter by organization name
+        if (organization != null && !organization.isBlank()) {
+            String orgLc = organization.toLowerCase();
+            users = users.stream()
+                    .filter(u -> u.getOrganizationName() != null
+                            && u.getOrganizationName().toLowerCase().contains(orgLc))
+                    .collect(Collectors.toList());
+        }
+
+        // Filter by department name
+        if (department != null && !department.isBlank()) {
+            String dLc = department.toLowerCase();
+            users = users.stream()
+                    .filter(u -> u.getDepartmentName() != null
+                            && u.getDepartmentName().toLowerCase().contains(dLc))
+                    .collect(Collectors.toList());
+        }
+
+        // Filter by team name
+        if (team != null && !team.isBlank()) {
+            String tLc = team.toLowerCase();
+            users = users.stream()
+                    .filter(u -> u.getTeamName() != null
+                            && u.getTeamName().toLowerCase().contains(tLc))
+                    .collect(Collectors.toList());
+        }
+
+        // Sort
+        if (sortBy != null) {
+            boolean desc = "desc".equalsIgnoreCase(sortDir);
+            Comparator<User> cmp;
+            switch (sortBy.toLowerCase()) {
+                case "email"   -> cmp = Comparator.comparing(u -> u.getEmail() != null ? u.getEmail() : "");
+                case "role"    -> cmp = Comparator.comparing(u -> u.getRole() != null ? u.getRole().name() : "");
+                case "status"  -> cmp = Comparator.comparing(u -> u.getAccountStatus() != null ? u.getAccountStatus().name() : "");
+                case "createdat", "created_at" -> cmp = Comparator.comparing(
+                        u -> u.getCreatedAt() != null ? u.getCreatedAt() : LocalDateTime.MIN);
+                case "lastloginat", "last_login" -> cmp = Comparator.comparing(
+                        u -> u.getLastLoginAt() != null ? u.getLastLoginAt() : LocalDateTime.MIN);
+                default -> cmp = Comparator.comparing(u -> u.getFullName() != null ? u.getFullName().toLowerCase() : "");
+            }
+            if (desc) cmp = cmp.reversed();
+            users.sort(cmp);
+        }
+
+        return users;
+    }
+
+    /** Populate transient membership fields for a user object. */
+    private User enrichUser(User user) {
+        // Organization membership
+        List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(user.getId());
+        if (memberships != null && !memberships.isEmpty()) {
+            OrganizationMember membership = memberships.get(0);
+            user.setOrganizationId(membership.getOrganizationId());
+            organizationRepository.findById(membership.getOrganizationId())
+                    .ifPresent(org -> user.setOrganizationName(org.getName()));
+        }
+        // Team membership
+        List<TeamMember> teamMemberships = teamMemberRepository.findByUserId(user.getId());
+        if (teamMemberships != null && !teamMemberships.isEmpty()) {
+            TeamMember tm = teamMemberships.get(0);
+            user.setTeamId(tm.getTeamId());
+            teamRepository.findById(tm.getTeamId())
+                    .ifPresent(t -> user.setTeamName(t.getName()));
+        }
+        // Department membership
+        departmentRepository.findAll().stream()
+                .filter(d -> d.getMemberIds() != null && d.getMemberIds().contains(user.getId()))
+                .findFirst()
+                .ifPresent(d -> {
+                    user.setDepartmentId(d.getId());
+                    user.setDepartmentName(d.getName());
+                });
+        // Last activity
+        List<AuditLog> activityLogs = auditLogRepository.findByPerformedByOrderByTimestampDesc(user.getEmail());
+        if (activityLogs != null && !activityLogs.isEmpty()) {
+            user.setLastActivityAt(activityLogs.get(0).getTimestamp());
+        }
+        return user;
+    }
+
+    /** Compute analytics stats for a single user. */
+    public Map<String, Object> getUserAnalytics(String userId) {
+        validateAdminOrSuperAdmin();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+
+        // Meeting stats
+        List<Meeting> hosted = meetingRepository.findByHostId(userId);
+        long hostedCount = hosted.size();
+        long completedMeetings = hosted.stream().filter(m -> m.getStatus() == MeetingStatus.ENDED).count();
+        long cancelledMeetings = hosted.stream().filter(m -> m.getStatus() == MeetingStatus.CANCELLED).count();
+
+        List<MeetingParticipant> participations = participantRepository.findByUserId(userId);
+        long joinedCount = participations.stream()
+                .filter(p -> p.getRole() != ParticipantRole.HOST).count();
+
+        // Meeting duration in minutes
+        long meetingMinutes = hosted.stream()
+                .filter(m -> m.getActualStartTime() != null && m.getActualEndTime() != null)
+                .mapToLong(m -> Duration.between(m.getActualStartTime(), m.getActualEndTime()).toMinutes())
+                .sum();
+        long meetingHours = meetingMinutes / 60;
+        long avgDuration = hostedCount > 0 ? meetingMinutes / hostedCount : 0;
+
+        // Attendance %
+        long totalInvited = invitationRepository.findByReceiverUserId(userId).size();
+        double attendancePct = totalInvited > 0 ? Math.round((joinedCount * 100.0 / totalInvited) * 10) / 10.0 : 0;
+
+        // Chat messages
+        long chatMessages = chatMessageRepository.countBySenderId(userId);
+
+        // Recordings
+        long recordings = recordingRepository.findByHostId(userId).size();
+
+        // Notifications received
+        long notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(userId).size();
+
+        // Login count
+        long loginCount = loginHistoryRepository.countByUserId(userId);
+
+        // Additional Stats
+        long whiteboardSessions = whiteboardSessionRepository.findAll().stream()
+                .filter(w -> userId.equals(w.getOwnerId())).count();
+                
+        long breakoutParticipation = breakoutRoomRepository.findAll().stream()
+                .filter(b -> b.getParticipantIds() != null && b.getParticipantIds().contains(userId)).count();
+                
+        long aiUsageCount = analyticsEventRepository.findAll().stream()
+                .filter(a -> userId.equals(a.getUserId()) && a.getEventType().name().startsWith("AI_")).count();
+                
+        long upcomingMeetings = hosted.stream()
+                .filter(m -> m.getStatus() == MeetingStatus.SCHEDULED && m.getScheduledStartTime() != null && m.getScheduledStartTime().isAfter(LocalDateTime.now()))
+                .count();
+
+        Map<String, Object> analytics = new LinkedHashMap<>();
+        analytics.put("totalMeetings", hostedCount + joinedCount);
+        analytics.put("hostedMeetings", hostedCount);
+        analytics.put("joinedMeetings", joinedCount);
+        analytics.put("completedMeetings", completedMeetings);
+        analytics.put("cancelledMeetings", cancelledMeetings);
+        analytics.put("meetingHours", meetingHours);
+        analytics.put("meetingMinutes", meetingMinutes);
+        analytics.put("attendancePercentage", attendancePct);
+        analytics.put("averageMeetingDurationMinutes", avgDuration);
+        analytics.put("chatMessages", chatMessages);
+        analytics.put("recordingsCreated", recordings);
+        analytics.put("notificationCount", notifications);
+        analytics.put("loginCount", loginCount);
+        analytics.put("whiteboardSessions", whiteboardSessions);
+        analytics.put("breakoutParticipation", breakoutParticipation);
+        analytics.put("aiUsageCount", aiUsageCount);
+        analytics.put("upcomingMeetings", upcomingMeetings);
+        analytics.put("filesUploaded", 0); // No file repository tracked per user natively
+        analytics.put("lastLoginAt", user.getLastLoginAt());
+        analytics.put("lastActivityAt", user.getLastActivityAt());
+        return analytics;
+    }
+
+    /** Return paginated activity audit log for a specific user. */
+    public List<AuditLog> getUserActivity(String userId, int limit) {
+        validateAdminOrSuperAdmin();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        // Activity = audit log records where this user was the performer or the target
+        List<AuditLog> performed = auditLogRepository.findByPerformedByOrderByTimestampDesc(user.getEmail());
+        List<AuditLog> affected = auditLogRepository.findByTargetIdOrderByTimestampDesc(userId);
+        Set<String> seen = new HashSet<>();
+        List<AuditLog> combined = new ArrayList<>();
+        for (AuditLog l : performed) { if (seen.add(l.getId())) combined.add(l); }
+        for (AuditLog l : affected) { if (seen.add(l.getId())) combined.add(l); }
+        combined.sort(Comparator.comparing(AuditLog::getTimestamp, Comparator.nullsLast(Comparator.reverseOrder())));
+        return combined.stream().limit(limit).collect(Collectors.toList());
+    }
+
+    /** Bulk action on a list of user IDs.
+     * action: delete | disable | enable | suspend | block | unblock | verify_email | assign_role | assign_organization | assign_team | assign_department
+     * roleValue: role name for assign_role
+     * targetId: org/team/dept id for assign_* actions
+     */
+    public Map<String, Object> bulkUserAction(List<String> userIds, String action, String roleValue, String targetId) {
+        validateAdminOrSuperAdmin();
+        User actor = getCurrentUser();
+        int success = 0;
+        int failed = 0;
+        for (String uid : userIds) {
+            try {
+                switch (action.toLowerCase()) {
+                    case "delete" -> {
+                        validateSuperAdmin();
+                        userRepository.deleteById(uid);
+                    }
+                    case "disable", "deactivate" -> updateAccountStatus(uid, AccountStatus.INACTIVE, "USER_DEACTIVATE");
+                    case "enable", "activate"    -> updateAccountStatus(uid, AccountStatus.ACTIVE, "USER_ACTIVATE");
+                    case "suspend"               -> updateAccountStatus(uid, AccountStatus.SUSPENDED, "USER_SUSPEND");
+                    case "block"                 -> updateAccountStatus(uid, AccountStatus.BLOCKED, "USER_BLOCK");
+                    case "unblock"               -> updateAccountStatus(uid, AccountStatus.ACTIVE, "USER_UNBLOCK");
+                    case "verify_email" -> {
+                        userRepository.findById(uid).ifPresent(u -> {
+                            u.setEmailVerified(true);
+                            u.setVerificationToken(null);
+                            u.setAccountStatus(AccountStatus.ACTIVE);
+                            u.setUpdatedAt(LocalDateTime.now());
+                            userRepository.save(u);
+                        });
+                    }
+                    case "assign_role" -> {
+                        if (roleValue != null) {
+                            Role r = Role.fromString(roleValue);
+                            userRepository.findById(uid).ifPresent(u -> {
+                                u.setRole(r);
+                                u.setUpdatedAt(LocalDateTime.now());
+                                userRepository.save(u);
+                            });
+                        }
+                    }
+                    case "assign_organization" -> {
+                        if (targetId != null) assignUserToOrganization(uid, targetId);
+                    }
+                    case "assign_team" -> {
+                        if (targetId != null) assignUserToTeam(uid, targetId);
+                    }
+                    case "assign_department" -> {
+                        if (targetId != null) assignUserToDepartment(uid, targetId);
+                    }
+                }
+                auditLogService.logAction("BULK_" + action.toUpperCase(), actor.getEmail(), uid, "USER",
+                        "Bulk action '" + action + "' applied to user: " + uid);
+                success++;
+            } catch (Exception e) {
+                logError("Bulk action failed for user " + uid, e);
+                failed++;
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("processed", userIds.size());
+        result.put("success", success);
+        result.put("failed", failed);
+        return result;
+    }
+
+    /** Force-verify a user's email address and activate their account. */
+    public User verifyUserEmail(String userId) {
+        validateAdminOrSuperAdmin();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        user.setEmailVerified(true);
+        user.setVerificationToken(null);
+        if (user.getAccountStatus() == AccountStatus.PENDING_VERIFICATION) {
+            user.setAccountStatus(AccountStatus.ACTIVE);
+        }
+        user.setUpdatedAt(LocalDateTime.now());
+        User saved = userRepository.save(user);
+        User actor = getCurrentUser();
+        auditLogService.logAction("USER_VERIFY_EMAIL", actor.getEmail(), userId, "USER",
+                "Admin verified email for: " + saved.getEmail());
+        return saved;
     }
 
     @Cacheable(value = "users", key = "#userId")
@@ -136,6 +452,38 @@ public class PlatformAdminService extends BaseService {
                 "USER",
                 "Deleted user: " + user.getEmail()
         );
+    }
+
+    public User createUser(User userDetails) {
+        validateAdminOrSuperAdmin();
+        if (userRepository.existsByEmail(userDetails.getEmail())) {
+            throw new RuntimeException("Email already exists");
+        }
+        if (userRepository.existsByUsername(userDetails.getUsername())) {
+            throw new RuntimeException("Username already exists");
+        }
+        
+        // Ensure some defaults
+        userDetails.setCreatedAt(LocalDateTime.now());
+        if (userDetails.getAccountStatus() == null) {
+            userDetails.setAccountStatus(AccountStatus.ACTIVE);
+            userDetails.setEmailVerified(true);
+        }
+        if (userDetails.getRole() == null) {
+            userDetails.setRole(Role.MEMBER);
+        }
+        
+        User saved = userRepository.save(userDetails);
+        
+        User actor = getCurrentUser();
+        auditLogService.logAction(
+                "USER_CREATE",
+                actor.getEmail(),
+                saved.getId(),
+                "USER",
+                "Admin created user: " + saved.getEmail()
+        );
+        return saved;
     }
 
     // ─── Account Moderation ──────────────────────────────────────────────────
@@ -395,5 +743,123 @@ public class PlatformAdminService extends BaseService {
 
     public List<Announcement> getAllAnnouncements() {
         return announcementRepository.findByOrderByCreatedAtDesc();
+    }
+
+    // ─── Assignment Helpers ───────────────────────────────────────────────────
+
+    /** Assign an existing user to an organization as MEMBER if not already a member. */
+    public void assignUserToOrganization(String userId, String organizationId) {
+        validateAdminOrSuperAdmin();
+        userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        organizationRepository.findById(organizationId)
+                .orElseThrow(() -> new RuntimeException("Organization not found: " + organizationId));
+        List<OrganizationMember> existing = organizationMemberRepository.findByUserId(userId);
+        boolean alreadyMember = existing.stream().anyMatch(m -> organizationId.equals(m.getOrganizationId()));
+        if (!alreadyMember) {
+            OrganizationMember member = OrganizationMember.builder()
+                    .userId(userId)
+                    .organizationId(organizationId)
+                    .role(OrganizationRole.MEMBER)
+                    .joinedAt(LocalDateTime.now())
+                    .build();
+            organizationMemberRepository.save(member);
+        }
+        User actor = getCurrentUser();
+        auditLogService.logAction("USER_ASSIGN_ORG", actor.getEmail(), userId, "USER",
+                "Assigned user " + userId + " to organization " + organizationId);
+    }
+
+    /** Assign a user to a team, creating a TeamMember record if not already there. */
+    public void assignUserToTeam(String userId, String teamId) {
+        validateAdminOrSuperAdmin();
+        userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        teamRepository.findById(teamId)
+                .orElseThrow(() -> new RuntimeException("Team not found: " + teamId));
+        List<TeamMember> existing = teamMemberRepository.findByUserId(userId);
+        boolean alreadyMember = existing.stream().anyMatch(m -> teamId.equals(m.getTeamId()));
+        if (!alreadyMember) {
+            TeamMember tm = TeamMember.builder()
+                    .userId(userId)
+                    .teamId(teamId)
+                    .joinedAt(LocalDateTime.now())
+                    .build();
+            teamMemberRepository.save(tm);
+        }
+        User actor = getCurrentUser();
+        auditLogService.logAction("USER_ASSIGN_TEAM", actor.getEmail(), userId, "USER",
+                "Assigned user " + userId + " to team " + teamId);
+    }
+
+    /** Assign a user to a department by adding their ID to departmentMemberIds. */
+    public void assignUserToDepartment(String userId, String departmentId) {
+        validateAdminOrSuperAdmin();
+        userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        Department dept = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new RuntimeException("Department not found: " + departmentId));
+        if (dept.getMemberIds() == null) dept.setMemberIds(new ArrayList<>());
+        if (!dept.getMemberIds().contains(userId)) {
+            dept.getMemberIds().add(userId);
+            departmentRepository.save(dept);
+        }
+        User actor = getCurrentUser();
+        auditLogService.logAction("USER_ASSIGN_DEPT", actor.getEmail(), userId, "USER",
+                "Assigned user " + userId + " to department " + departmentId);
+    }
+
+    // ─── Admin Reset Password ─────────────────────────────────────────────────
+
+    /** Super Admin can force-reset any user's password. */
+    public void adminResetPassword(String userId, String newPassword) {
+        validateSuperAdmin();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        user.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(newPassword));
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+        User actor = getCurrentUser();
+        auditLogService.logAction("USER_PASSWORD_RESET", actor.getEmail(), userId, "USER",
+                "Admin reset password for user: " + user.getEmail());
+    }
+
+    // ─── Login History ────────────────────────────────────────────────────────
+
+    public List<LoginHistory> getUserLoginHistory(String userId) {
+        validateAdminOrSuperAdmin();
+        return loginHistoryRepository.findByUserId(userId);
+    }
+
+    // ─── CSV Export ───────────────────────────────────────────────────────────
+
+    /** Export all (optionally filtered) users as CSV string. */
+    public String exportUsersCsv(String search, String role, String status) {
+        List<User> users = getAllUsers(search, role, status, "fullName", "asc", null, null, null, null);
+        StringBuilder sb = new StringBuilder();
+        sb.append("Id,FullName,Email,Username,Role,Status,EmailVerified,Organization,Department,Team,CreatedAt,LastLoginAt\n");
+        for (User u : users) {
+            sb.append(csvField(u.getId())).append(',');
+            sb.append(csvField(u.getFullName())).append(',');
+            sb.append(csvField(u.getEmail())).append(',');
+            sb.append(csvField(u.getUsername())).append(',');
+            sb.append(csvField(u.getRole() != null ? u.getRole().name() : "")).append(',');
+            sb.append(csvField(u.getAccountStatus() != null ? u.getAccountStatus().name() : "")).append(',');
+            sb.append(u.isEmailVerified()).append(',');
+            sb.append(csvField(u.getOrganizationName())).append(',');
+            sb.append(csvField(u.getDepartmentName())).append(',');
+            sb.append(csvField(u.getTeamName())).append(',');
+            sb.append(csvField(u.getCreatedAt() != null ? u.getCreatedAt().toString() : "")).append(',');
+            sb.append(csvField(u.getLastLoginAt() != null ? u.getLastLoginAt().toString() : "")).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private String csvField(String val) {
+        if (val == null) return "";
+        if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
+            return "\"" + val.replace("\"", "\"\"") + "\"";
+        }
+        return val;
     }
 }

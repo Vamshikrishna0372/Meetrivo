@@ -51,10 +51,12 @@ function Lobby() {
     }
     setJoining(true);
     setError("");
+    let mId = "";
     try {
       const result = await meetingsApi.join(meetingCode);
-      if (result?.meetingId || result?.id) {
-        localStorage.setItem("current_meeting_id", result.meetingId || result.id);
+      mId = result?.meetingId || result?.id || "";
+      if (mId) {
+        localStorage.setItem("current_meeting_id", mId);
       }
       if (meetingCode) {
         localStorage.setItem("current_meeting_code", meetingCode);
@@ -68,7 +70,9 @@ function Lobby() {
     localStorage.setItem("lobby_mic", micOn ? "true" : "false");
     localStorage.setItem("lobby_cam", camOn ? "true" : "false");
     localStorage.setItem("lobby_name", name);
-    navigate({ to: "/room" });
+    
+    // Pass meetingId and code to room to make URL the source of truth
+    window.location.href = `/room?meetingId=${mId}&code=${meetingCode}`;
   };
 
   return (

@@ -105,6 +105,10 @@ public class AuthService extends BaseService {
                 .fullName(user.getFullName())
                 .profilePicture(user.getProfilePicture())
                 .bio(user.getBio())
+                .phone(user.getPhone())
+                .timezone(user.getTimezone())
+                .country(user.getCountry())
+                .language(user.getLanguage())
                 .role(user.getRole())
                 .accountStatus(user.getAccountStatus())
                 .emailVerified(user.isEmailVerified())
@@ -112,6 +116,14 @@ public class AuthService extends BaseService {
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .lastLoginAt(user.getLastLoginAt())
+                .organizationId(user.getOrganizationId())
+                .organizationName(user.getOrganizationName())
+                .teamId(user.getTeamId())
+                .teamName(user.getTeamName())
+                .departmentId(user.getDepartmentId())
+                .departmentName(user.getDepartmentName())
+                .online(user.isOnline())
+                .lastActivityAt(user.getLastActivityAt())
                 .build();
     }
 

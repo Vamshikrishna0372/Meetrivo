@@ -38,7 +38,7 @@ public class MeetingService extends BaseService {
     private final AttendanceService attendanceService;
     private final Random random = new Random();
 
-    @Value("${app.meeting.join-url-prefix:https://themeetrivo.vercel.app/join/}")
+    @Value("${app.meeting.join-url-prefix:http://localhost:5173/join/}")
     private String joinUrlPrefix;
 
     public MeetingResponse createMeeting(CreateMeetingRequest request) {
@@ -87,6 +87,10 @@ public class MeetingService extends BaseService {
         Meeting savedMeeting = meetingRepository.save(meeting);
         analyticsService.trackEvent(AnalyticsEventType.MEETING_CREATED, host.getId(), savedMeeting.getMeetingId(), null);
         logInfo("Created meeting: " + savedMeeting.getMeetingCode() + " by host: " + host.getUsername());
+        // DEBUG
+        System.out.println("[DEBUG][CREATE] host=" + host.getUsername()
+            + " meetingId=" + savedMeeting.getMeetingId()
+            + " meetingCode=" + savedMeeting.getMeetingCode());
 
         return mapToMeetingResponse(savedMeeting);
     }

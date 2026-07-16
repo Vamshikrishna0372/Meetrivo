@@ -9,4 +9,7 @@ import java.util.List;
 @Repository
 public interface AuditLogRepository extends MongoRepository<AuditLog, String> {
     List<AuditLog> findByOrderByTimestampDesc();
+    List<AuditLog> findByPerformedByOrderByTimestampDesc(String performedBy);
+    List<AuditLog> findByTargetIdOrderByTimestampDesc(String targetId);
+    long countByPerformedBy(String performedBy);
 }

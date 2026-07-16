@@ -1,9 +1,11 @@
 package com.meetrivo.config;
 
+import com.meetrivo.model.Role;
 import com.meetrivo.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.format.FormatterRegistry;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -13,10 +15,11 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @RequiredArgsConstructor
-public class ApplicationConfig {
+public class ApplicationConfig implements WebMvcConfigurer {
 
     @Bean
     public ObjectMapper objectMapper() {
@@ -51,5 +54,13 @@ public class ApplicationConfig {
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
-}
 
+    /**
+     * Register a lenient String→Role converter so that @RequestParam Role role
+     * accepts legacy values like "USER" and "ADMIN" via Role.fromString().
+     */
+    @Override
+    public void addFormatters(FormatterRegistry registry) {
+        registry.addConverter(String.class, Role.class, Role::fromString);
+    }
+}

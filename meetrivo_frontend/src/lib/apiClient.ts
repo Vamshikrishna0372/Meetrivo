@@ -563,6 +563,21 @@ export const admin = {
   getAnnouncements: () => apiFetch<any[]>('/api/admin/announcements'),
   createAnnouncement: (data: any) =>
     apiFetch<any>('/api/admin/announcements', { method: 'POST', body: JSON.stringify(data) }),
+  // Per-user analytics & login history
+  getUserAnalytics: (userId: string) =>
+    apiFetch<any>(`/api/admin/users/${userId}/analytics`),
+  getUserLoginHistory: (userId: string) =>
+    apiFetch<any[]>(`/api/admin/users/${userId}/login-history`),
+  getUserActivity: (userId: string, limit = 100) =>
+    apiFetch<any[]>(`/api/admin/users/${userId}/activity?limit=${limit}`),
+  // Bulk actions
+  bulkAction: (userIds: string[], action: string, role?: string, targetId?: string) =>
+    apiFetch<any>('/api/admin/users/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ userIds, action, role, targetId }),
+    }),
+  // Export CSV
+  exportUsersUrl: () => `${BACKEND_URL}/api/admin/users/export/csv`,
 };
 
 // ── Audit ─────────────────────────────────────────────────────────────────────

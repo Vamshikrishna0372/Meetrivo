@@ -5,6 +5,7 @@ import { FiCheck } from "react-icons/fi";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import { Field } from "@/components/shared/Field";
 import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({ meta: [{ title: "Reset password — Meetrivo" }] }),
@@ -26,11 +27,7 @@ function ForgotPage() {
     setError("");
     setLoading(true);
     
-    import("@/lib/apiClient").then(({ apiFetch }) => {
-      apiFetch("/api/auth/forgot-password", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      })
+    auth.forgotPassword(email)
         .then(() => {
           setSent(true);
         })
@@ -40,7 +37,6 @@ function ForgotPage() {
         .finally(() => {
           setLoading(false);
         });
-    });
   };
 
   return (

@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { createFileRoute } from '@tanstack/react-router'
+import { useState, useRef, useCallback, useEffect } from "react";
+
 import { AnimatePresence, motion } from "framer-motion";
 import {
   FiMic,
@@ -52,20 +53,15 @@ export const Route = createFileRoute("/room")({
 type DrawerKind = "chat" | "participants" | "files" | "info" | "ai" | "breakout" | null;
 
 function RoomPage() {
-  const [meetingCode, setMeetingCode] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const codeParam = params.get("code");
-      if (codeParam) return codeParam;
-      return localStorage.getItem("current_meeting_code") || "MTR-481-902";
-    }
-    return "MTR-481-902";
-  });
-
+  // meetingCode: read once from URL params or localStorage — NEVER regenerated
+  const [meetingCode, setMeetingCode] = useState("");
+  const [urlMeetingId, setUrlMeetingId] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
   const [meeting, setMeeting] = useState<any>(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [sharing, setSharing] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [handUp, setHandUp] = useState(false);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
   const [showReactions, setShowReactions] = useState(false);
@@ -97,20 +93,71 @@ function RoomPage() {
       await handleWebRTCSignal(signal);
     }
   );
+  // DEBUG: log the meetingId passed to useWebSocket on every render
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    console.log(`[DEBUG][ROOM] useWebSocket called with meetingId=${meeting?.meetingId || "(empty)"}`);
+  }, [meeting?.meetingId]);
 
   const waitingCount = waitingParticipants?.length || 0;
 
+  // ── MOUNT: read meetingCode and meetingId from URL or localStorage exactly ONCE (client-only) ──
+  // This prevents hydration mismatch: server renders empty string, client fills in after mount.
   useEffect(() => {
-    if (meetingCode) {
-      meetingsApi.searchByCode(meetingCode)
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get("code") || "";
+    const idFromUrl = params.get("meetingId") || "";
+    const codeFromStorage = localStorage.getItem("current_meeting_code") || "";
+    const idFromStorage = localStorage.getItem("current_meeting_id") || "";
+    
+    console.log(`[DEBUG][ROOM] MOUNT: codeFromUrl=${codeFromUrl} idFromUrl=${idFromUrl} codeFromStorage=${codeFromStorage} idFromStorage=${idFromStorage}`);
+    
+    if (idFromUrl) {
+      setUrlMeetingId(idFromUrl);
+    } else if (idFromStorage) {
+      setUrlMeetingId(idFromStorage);
+    }
+    
+    const code = codeFromUrl || codeFromStorage;
+    if (code) setMeetingCode(code);
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (urlMeetingId) {
+      console.log(`[DEBUG][ROOM] Fetching meeting by UUID=${urlMeetingId}`);
+      meetingsApi.getById(urlMeetingId)
         .then((res) => {
-          if (res && res.length > 0) {
-            setMeeting(res[0]);
+          if (res) {
+            console.log(`[DEBUG][ROOM] getById result: meetingId=${res.meetingId} meetingCode=${res.meetingCode}`);
+            setMeeting(res);
+            if (res.meetingCode) setMeetingCode(res.meetingCode);
           }
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.error(`[DEBUG][ROOM] getById error:`, err);
+          if (meetingCode) {
+            fetchByCode(meetingCode);
+          }
+        });
+    } else if (meetingCode) {
+      fetchByCode(meetingCode);
     }
-  }, [meetingCode]);
+  }, [urlMeetingId, meetingCode]);
+
+  const fetchByCode = (code: string) => {
+    console.log(`[DEBUG][ROOM] Fetching meeting by code=${code}`);
+    meetingsApi.searchByCode(code)
+      .then((res) => {
+        if (res && res.length > 0) {
+          console.log(`[DEBUG][ROOM] searchByCode result: meetingId=${res[0].meetingId} meetingCode=${res[0].meetingCode}`);
+          setMeeting(res[0]);
+        } else {
+          console.warn(`[DEBUG][ROOM] searchByCode returned no results for code=${code}`);
+        }
+      })
+      .catch((err) => { console.error(`[DEBUG][ROOM] searchByCode error:`, err); });
+  };
 
   useEffect(() => {
     // Access local media
@@ -144,32 +191,7 @@ function RoomPage() {
     }
   }, [micOn, camOn, sharing, connected]);
 
-  const handleWebRTCSignal = async (msg: any) => {
-    const { type, senderId, payload } = msg;
-    try {
-      if (type === "OFFER") {
-        const pc = getOrCreatePeerConnection(senderId);
-        await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sendSignal("ANSWER", senderId, answer);
-      } else if (type === "ANSWER") {
-        const pc = peersRef.current[senderId];
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        }
-      } else if (type === "ICE_CANDIDATE") {
-        const pc = peersRef.current[senderId];
-        if (pc && payload) {
-          await pc.addIceCandidate(new RTCIceCandidate(payload));
-        }
-      }
-    } catch (e) {
-      console.error("Error handling WebRTC signal:", e);
-    }
-  };
-
-  const getOrCreatePeerConnection = (userId: string) => {
+  const getOrCreatePeerConnection = useCallback((userId: string) => {
     if (peersRef.current[userId]) {
       return peersRef.current[userId];
     }
@@ -198,9 +220,34 @@ function RoomPage() {
     }
 
     return pc;
-  };
+  }, [sendSignal]);
 
-  const initiateCall = (userId: string) => {
+  const handleWebRTCSignal = useCallback(async (msg: any) => {
+    const { type, senderId, payload } = msg;
+    try {
+      if (type === "OFFER") {
+        const pc = getOrCreatePeerConnection(senderId);
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal("ANSWER", senderId, answer);
+      } else if (type === "ANSWER") {
+        const pc = peersRef.current[senderId];
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        }
+      } else if (type === "ICE_CANDIDATE") {
+        const pc = peersRef.current[senderId];
+        if (pc && payload) {
+          await pc.addIceCandidate(new RTCIceCandidate(payload));
+        }
+      }
+    } catch (e) {
+      console.error("Error handling WebRTC signal:", e);
+    }
+  }, [getOrCreatePeerConnection, sendSignal]);
+
+  const initiateCall = useCallback((userId: string) => {
     const pc = getOrCreatePeerConnection(userId);
     pc.createOffer()
       .then(offer => pc.setLocalDescription(offer))
@@ -208,16 +255,34 @@ function RoomPage() {
         sendSignal("OFFER", userId, pc.localDescription);
       })
       .catch(e => console.error("Error creating WebRTC offer:", e));
-  };
+  }, [getOrCreatePeerConnection, sendSignal]);
 
-  // Trigger calls to new participants
+  // Trigger calls to new participants and clean up departed ones
   useEffect(() => {
+    // Initiate calls to new participants
     participants.forEach(p => {
       if (!p.isYou && !peersRef.current[p.id]) {
         initiateCall(p.id);
       }
     });
-  }, [participants]);
+
+    // Clean up departed participants' peers
+    const activeIds = new Set(participants.map(p => p.id));
+    Object.keys(peersRef.current).forEach(id => {
+      if (!activeIds.has(id)) {
+        console.log(`[DEBUG][ROOM] Cleaning up peer connection for departed user=${id}`);
+        try {
+          peersRef.current[id].close();
+        } catch (_) {}
+        delete peersRef.current[id];
+        setRemoteStreams(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }
+    });
+  }, [participants, initiateCall]);
 
   const toggleSharing = async () => {
     if (!sharing) {

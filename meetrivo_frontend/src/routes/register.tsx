@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { AuthLayout } from "@/layouts/AuthLayout";
 import { Field } from "@/components/shared/Field";
 import { Button } from "@/components/ui/button";
+import { auth } from "@/lib/apiClient";
 
 export const Route = createFileRoute("/register")({
   head: () => ({ meta: [{ title: "Create account — Meetrivo" }] }),
@@ -32,17 +33,12 @@ function RegisterPage() {
     setLoading(true);
     const username = values.email.split("@")[0] + "_" + Math.floor(Math.random() * 1000);
     
-    // Import apiFetch dynamically or from path
-    import("@/lib/apiClient").then(({ apiFetch }) => {
-      apiFetch("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          username,
-          email: values.email,
-          fullName: values.name,
-          password: values.password,
-        }),
-      })
+    auth.register({
+      username,
+      email: values.email,
+      name: values.name,
+      password: values.password,
+    })
         .then(() => {
           toast.success("Account created — please login!");
           navigate({ to: "/login" });
@@ -53,7 +49,6 @@ function RegisterPage() {
         .finally(() => {
           setLoading(false);
         });
-    });
   };
 
   return (
